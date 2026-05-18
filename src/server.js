@@ -180,3 +180,29 @@ app.listen(PORT, () => {
   console.log(`🚀 Server is running on port ${PORT}`);
   console.log(`👉 Access API at http://localhost:${PORT}`);
 });
+
+// Render Keep-Alive System (Prevents Free-tier instances from spinning down/sleeping due to inactivity)
+const RENDER_URL = process.env.RENDER_EXTERNAL_URL;
+if (RENDER_URL) {
+  console.log(`⚡ Render keep-alive system active. Target URL: ${RENDER_URL}`);
+  // Ping the server's own health endpoint every 10 minutes (600,000 milliseconds)
+  setInterval(async () => {
+    try {
+      const response = await fetch(`${RENDER_URL}/api/status`);
+      if (response.ok) {
+        console.log(`🛰️ Keep-alive ping successful at ${new Date().toLocaleTimeString()}`);
+      }
+    } catch (error) {
+      console.error('🛰️ Keep-alive ping failed:', error.message);
+    }
+  }, 10 * 60 * 1000);
+}
+
+// Global Process Error Shield (Ensures Node.js backend never crashes due to unhandled exceptions)
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('🔥 CRITICAL SHIELD: Caught Unhandled Rejection at:', promise, 'reason:', reason);
+});
+
+process.on('uncaughtException', (error) => {
+  console.error('🔥 CRITICAL SHIELD: Caught Uncaught Exception thrown:', error);
+});
