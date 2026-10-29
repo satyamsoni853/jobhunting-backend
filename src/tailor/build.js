@@ -1,5 +1,6 @@
 import { SKILL_BY_ID, ROLES } from './kb.js';
 import { MASTER } from './master.js';
+import { greeting } from '../company.js';
 
 // Skills used to pad the title line when the post names fewer than three that the candidate has
 const ROLE_DEFAULTS = {
@@ -26,8 +27,9 @@ const relevance = (tags, matched) =>
     return sum + (i === -1 ? 0 : 1 + (matched.length - i) / (matched.length + 1));
   }, 0);
 
-// company: when known the note opens "Dear Acme Team," instead of "Dear Hiring Team,"
-export function buildContent(a, company = '') {
+// who: { company, person }. The note greets the person (or the company team) and the subject and note name the company.
+export function buildContent(a, who = {}) {
+  const { company = '', person = '' } = typeof who === 'string' ? { company: who } : who;
   const matched = a.matched;
   const roleId = a.roleId;
 
@@ -77,7 +79,9 @@ export function buildContent(a, company = '') {
 
   // ---- subject and cover note ----
   const subjectSkills = top.slice(0, 3).join(', ');
-  const subject = `Application for ${a.roleLabel} (${subjectSkills}) - ${MASTER.name}`;
+  const subject = company
+    ? `Application for ${a.roleLabel} at ${company} (${top.slice(0, 2).join(', ')}) - ${MASTER.name}`
+    : `Application for ${a.roleLabel} (${subjectSkills}) - ${MASTER.name}`;
 
   const backendRole = ['backend', 'java', 'python', 'node'].includes(roleId);
   const frontendRole = ['frontend', 'react', 'nextjs', 'mern', 'angular'].includes(roleId);
@@ -90,11 +94,11 @@ export function buildContent(a, company = '') {
   const opening =
     roleId === 'freelance'
       ? `I am writing to offer my help on freelance and contract projects. I am a Full Stack Developer based in Gurugram with hands-on experience in ${list(top)}.`
-      : `I am writing to apply for the ${a.roleLabel} role. I am a Full Stack Developer based in Gurugram with hands-on experience in ${list(top)}.`;
+      : `I am writing to apply for the ${a.roleLabel} role${company ? ` at ${company}` : ''}. I am a Full Stack Developer based in Gurugram with hands-on experience in ${list(top)}.`;
   const closing = `My resume is attached, arranged for this role. I am available to join immediately${a.signals.remote ? ' and comfortable working remotely' : ''}, and happy to share more details or take a technical round at your convenience.`;
 
   const body = [
-    company ? `Dear ${company} Team,` : 'Dear Hiring Team,',
+    greeting({ person, company }),
     '',
     opening,
     '',

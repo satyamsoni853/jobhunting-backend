@@ -59,6 +59,37 @@ export function companyFromPost(text, email = '') {
   return fromDomain(email);
 }
 
+// ---- the person: first name from an address like ankit.sharma@acme.com ----
+// Mailboxes that belong to a team, not a person
+const GENERIC_LOCAL = new Set([
+  'hr', 'jobs', 'job', 'career', 'careers', 'hiring', 'hire', 'recruit', 'recruiting', 'recruiter', 'recruiters', 'recruitment',
+  'talent', 'team', 'info', 'contact', 'hello', 'hi', 'hey', 'admin', 'support', 'sales', 'apply', 'applications', 'application',
+  'resume', 'resumes', 'cv', 'people', 'staff', 'office', 'mail', 'email', 'enquiry', 'inquiry', 'enquiries', 'work', 'join',
+  'founders', 'founder', 'engineering', 'tech', 'dev', 'devs', 'marketing', 'press', 'help', 'general', 'opportunities',
+  'openings', 'vacancies', 'humanresources', 'peopleops', 'talentacquisition', 'ta', 'internships', 'intern',
+]);
+
+// Returns a capitalised first name, or '' when the address does not clearly name a person.
+// first.last / first_last / first-last is trusted. A single word (ankit@) is trusted only when the post writes that
+// name with a capital letter, so "jobs@" or "lazarbukejlovic@" never become "Dear Jobs".
+export function personFromEmail(email, text = '') {
+  const local = String(email || '').split('@')[0].toLowerCase();
+  if (!local || /\d/.test(local)) return '';
+  const parts = local.split(/[._-]+/).filter(Boolean);
+  const first = parts[0];
+  if (!first || !/^[a-z]{2,14}$/.test(first) || GENERIC_LOCAL.has(first) || GENERIC_LOCAL.has(local.replace(/[._-]/g, ''))) return '';
+  const name = first.charAt(0).toUpperCase() + first.slice(1);
+
+  if (parts.length >= 2) {
+    // "info.sales", "jobs.india" etc: skip when the second word is generic too
+    return parts.slice(1).some((p) => !GENERIC_LOCAL.has(p)) ? name : '';
+  }
+  return first.length <= 10 && new RegExp(`\\b${name}\\b`).test(String(text)) ? name : '';
+}
+
+// "Dear Ankit," when a person is known, else "Dear Acme Labs Team,", else "Dear Hiring Team,"
+export const greeting = ({ person, company } = {}) => (person ? `Dear ${person},` : company ? `Dear ${company} Team,` : 'Dear Hiring Team,');
+
 // ---- time zone: UTC offset in hours of where the recruiter likely works, or null ----
 const ZONES = [
   [/\bindia\b|bangalore|bengaluru|mumbai|delhi|gurgaon|gurugram|hyderabad|pune|chennai|noida|kolkata|\bist\b/i, 5.5],

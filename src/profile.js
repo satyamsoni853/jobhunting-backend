@@ -25,6 +25,10 @@ export const PROFILE = {
   ].join('\n'),
 };
 
+// "Application for Full Stack Developer (...) - Name" -> "Application for Full Stack Developer at Acme (...) - Name"
+export const subjectAtCompany = (subject, company) =>
+  company ? subject.replace(/^(Application for [^(]*?)( \(| - )/, `$1 at ${company}$2`) : subject;
+
 // Same lookup the mailer uses: base64 from env (public repos), else a local file
 export function loadResume() {
   const filename = process.env.RESUME_FILENAME || 'Satyam_Soni_Resume.pdf';
@@ -34,16 +38,15 @@ export function loadResume() {
   return null;
 }
 
-export function registerProfile(app, auth) {
-  // Public: only the text that is sent in every mail anyway
-  app.get('/api/profile/satyam', (req, res) => {
+export function registerProfile(app, guard) {
+  // Behind the login code (otp.js): the profile text and resume are not public
+  app.get('/api/profile/satyam', guard, (req, res) => {
     const subject = process.env.AUTO_SUBJECT || PROFILE.subject;
     const body = process.env.AUTO_BODY ? process.env.AUTO_BODY.replace(/\\n/g, '\n') : PROFILE.body;
     res.json({ name: PROFILE.name, email: PROFILE.email, subject, body });
   });
 
-  // Key protected: the resume PDF is not served to the public
-  app.get('/api/profile/satyam/resume', auth, (req, res) => {
+  app.get('/api/profile/satyam/resume', guard, (req, res) => {
     const resume = loadResume();
     if (!resume) return res.status(404).json({ error: 'Resume not configured on the server' });
     res.set('Content-Type', 'application/pdf');

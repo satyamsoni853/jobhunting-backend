@@ -7,9 +7,9 @@ import { SKILL_BY_ID } from './kb.js';
 export const minFit = () => (process.env.MIN_FIT !== undefined ? Number(process.env.MIN_FIT) : 0.45);
 
 // text: the recruiter's post. Returns the analysis plus the tailored subject, body and resume content.
-export function tailorResume(text, company = '') {
+export function tailorResume(text, who = {}) {
   const analysis = analyzePost(text);
-  const content = buildContent(analysis, company);
+  const content = buildContent(analysis, who);
   return { analysis, content, subject: content.subject, body: content.body };
 }
 

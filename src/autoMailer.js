@@ -2,12 +2,12 @@ import fs from 'fs';
 import path from 'path';
 import nodemailer from 'nodemailer';
 import { isBlocked } from './blocklist.js';
-import { PROFILE } from './profile.js';
+import { PROFILE, subjectAtCompany } from './profile.js';
 import { tailorResume, renderPdf, minFit } from './tailor/index.js';
 import { store } from './store.js';
 import { getSmtp } from './smtp.js';
 import { verifyEmail } from './emailCheck.js';
-import { companyFromPost, timezoneFromPost, inBusinessHours } from './company.js';
+import { companyFromPost, personFromEmail, greeting, timezoneFromPost, inBusinessHours } from './company.js';
 import { dueForFollowUp, followUpContent, followUpDays, maxFollowUps, followUpsEnabled } from './followup.js';
 
 // Auto-mailer: the LinkedIn extension and the hunter push addresses here, a background queue sends them one by one.
@@ -91,11 +91,13 @@ async function sendFirst(job, c) {
   let attachments = resumeAttachment(c);
   let tailored = null;
   let role = '';
-  if (job.company) text = text.replace(/^Dear Hiring Team,/, `Dear ${job.company} Team,`);
+  const who = { company: job.company, person: job.person };
+  text = text.replace(/^Dear Hiring Team,/, greeting(who));
+  subject = subjectAtCompany(subject, job.company);
 
   // With the recruiter's post available, build the resume and note for that role (rules only, no AI)
   if (job.postText && c.tailor) {
-    const t = tailorResume(job.postText, job.company);
+    const t = tailorResume(job.postText, who);
     const a = t.analysis;
     if (a.fit < minFit()) {
       const reason = `low fit (${a.fit}) for ${a.roleLabel}${a.reasons.length ? `: ${a.reasons.join(', ')}` : ''}`;
@@ -122,11 +124,12 @@ async function sendFirst(job, c) {
     subject,
     role,
     company: job.company || '',
+    person: job.person || '',
     tz: job.tz ?? null,
     postUrl: job.postUrl || '',
     messageId: info.messageId,
   });
-  note({ email, status: c.dryRun ? 'dry-run' : 'success', id: info.messageId, subject, tailored, company: job.company || undefined });
+  note({ email, status: c.dryRun ? 'dry-run' : 'success', id: info.messageId, subject, tailored, company: job.company || undefined, person: job.person || undefined });
   console.log(`${c.dryRun ? '🧪 Dry run' : '✔️ Auto-sent'} to ${email}`);
   return true;
 }
@@ -216,6 +219,7 @@ export function enqueueEmails(emails, query = '', postUrl = '', postText = '') {
       postUrl,
       postText: text,
       company: companyFromPost(text, email),
+      person: personFromEmail(email, text),
       tz: timezoneFromPost(text, email),
       queuedAt: Date.now(),
     });
@@ -241,6 +245,13 @@ export function queueFollowUps() {
 }
 
 export const mailerConfig = cfg;
+
+// A plain system mail (for example the login code). Not part of the queue, no resume, no limits.
+export async function sendSystemMail(to, subject, text) {
+  const c = cfg();
+  if (!c.dryRun && (!c.user || !c.pass)) throw new Error('Sender Gmail is not connected on the server.');
+  return getTransporter(c).sendMail({ from: `"Job Hunter" <${c.user || 'me@localhost'}>`, to, subject, text });
+}
 
 export function registerAutoMailer(app) {
   const auth = requireKey;

@@ -8,6 +8,7 @@ import { registerAutoMailer, requireKey } from './autoMailer.js';
 import { registerSearchRoutes } from './searchKeywords.js';
 import { registerHunter } from './hunter.js';
 import { registerProfile } from './profile.js';
+import { registerOtp, requireProfileToken } from './otp.js';
 import { registerTailor } from './tailor/index.js';
 import { startScheduler, runTickNow } from './scheduler.js';
 import { registerJobs } from './jobs.js';
@@ -188,7 +189,8 @@ app.post('/api/send-emails', upload.single('resume'), async (req, res) => {
 registerAutoMailer(app);
 registerSearchRoutes(app, requireKey);
 registerHunter(app, requireKey);
-registerProfile(app, requireKey);
+registerOtp(app);
+registerProfile(app, requireProfileToken);
 registerTailor(app, requireKey);
 registerJobs(app);
 registerSmtp(app, requireKey);

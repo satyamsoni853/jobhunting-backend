@@ -1,3 +1,5 @@
+import { greeting } from './company.js';
+
 // Follow-up mails: one polite reminder a few days after the first mail, only to people who have not replied.
 
 export const followUpsEnabled = () => process.env.FOLLOWUP_ENABLED !== 'false';
@@ -18,12 +20,11 @@ export function dueForFollowUp(rec, now = Date.now()) {
 }
 
 export function followUpContent(rec, signature) {
-  const to = rec.company ? `${rec.company} Team` : 'Hiring Team';
   const role = rec.role || 'Full Stack Developer';
   return {
     subject: rec.subject?.startsWith('Re:') ? rec.subject : `Re: ${rec.subject || `Application for ${role}`}`,
     text: [
-      `Dear ${to},`,
+      greeting({ person: rec.person, company: rec.company }),
       '',
       `I wanted to follow up on my application for the ${role} role, in case it got buried. I remain very interested and am available to join immediately.`,
       '',
