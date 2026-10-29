@@ -44,8 +44,20 @@ const persistQueue = () => {
   if (dbEnabled()) setKv('queue', JSON.stringify(queue));
 };
 
+// Addresses the owner cancelled on the website: never queued again, even if a post shows them once more
+const cancelled = new Set();
+const persistCancelled = () => {
+  if (dbEnabled()) setKv('cancelled', JSON.stringify([...cancelled]));
+};
+
 export async function initQueue() {
   if (!dbEnabled()) return 0;
+  try {
+    for (const e of JSON.parse((await getKv('cancelled')) || '[]')) cancelled.add(e);
+    history.push(...JSON.parse((await getKv('history')) || '[]'));
+  } catch {
+    /* an unreadable copy is just ignored */
+  }
   const raw = await getKv('queue');
   let n = 0;
   for (const job of raw ? JSON.parse(raw) : []) {
@@ -62,13 +74,32 @@ export async function initQueue() {
   return n;
 }
 
+// the worker's one-minute rest can be cut short, for example when the owner presses "send now"
+let wake = null;
+const idle = (ms) =>
+  new Promise((resolve) => {
+    const t = setTimeout(resolve, ms);
+    wake = () => {
+      clearTimeout(t);
+      resolve();
+    };
+  });
+
 let working = false;
 let transporter = null;
 const history = []; // last 50 results, for /api/auto-status
 
+let historyTimer = null;
 const note = (entry) => {
   history.unshift({ at: new Date().toISOString(), ...entry });
-  history.length = Math.min(history.length, 50);
+  history.length = Math.min(history.length, 100);
+  // the skipped and failed list survives a restart too (written at most once every 2 seconds)
+  if (dbEnabled() && !historyTimer) {
+    historyTimer = setTimeout(() => {
+      historyTimer = null;
+      setKv('history', JSON.stringify(history));
+    }, 2000);
+  }
 };
 
 let transporterKey = '';
@@ -189,7 +220,7 @@ async function work() {
   working = true;
   const c = cfg();
   // a job waits for the recruiter's business hours, but never longer than 3 days
-  const ready = (j) => !c.tzAware || inBusinessHours(j.tz) || Date.now() - j.queuedAt > 72 * HOUR;
+  const ready = (j) => j.force || !c.tzAware || inBusinessHours(j.tz) || Date.now() - j.queuedAt > 72 * HOUR;
 
   while (queue.length) {
     if (store.sentToday() >= c.dailyLimit) {
@@ -201,7 +232,7 @@ async function work() {
     let idx = queue.findIndex((j) => j.type === 'first' && ready(j));
     if (idx === -1) idx = queue.findIndex((j) => j.type === 'followup' && ready(j));
     if (idx === -1) {
-      await sleep(10 * 60 * 1000); // everything left is outside business hours
+      await idle(60 * 1000); // everything left is outside business hours, look again in a minute
       continue;
     }
     const job = queue.splice(idx, 1)[0];
@@ -244,9 +275,21 @@ export function enqueueEmails(emails, query = '', postUrl = '', postText = '', a
   for (const raw of Array.isArray(emails) ? emails : [emails]) {
     const email = String(raw).trim().toLowerCase();
     if (!EMAIL_RE.test(email) || store.has(email) || queued.has(`first:${email}`)) continue;
-    if (isBlocked(email)) {
+    if (isBlocked(email) || cancelled.has(email)) {
       blocked++;
       continue;
+    }
+    // The fit is judged now, so the list on the website only shows mails that will really be sent
+    let fit = null;
+    let role = '';
+    if (text && c.tailor) {
+      const a = tailorResume(text, {}).analysis;
+      if (a.fit < minFit()) {
+        note({ email, status: 'skipped', reason: `low fit (${a.fit}) for ${a.roleLabel}${a.reasons.length ? `: ${a.reasons.join(', ')}` : ''}`, query, postUrl });
+        continue;
+      }
+      fit = a.fit;
+      role = a.roleLabel;
     }
     queued.add(`first:${email}`);
     queue.push({
@@ -257,6 +300,8 @@ export function enqueueEmails(emails, query = '', postUrl = '', postText = '', a
       postText: text,
       company: companyFromPost(text, email),
       override, // { subject, body } typed by the owner for this batch
+      fit,
+      role,
       person: personFromEmail(email, text),
       tz: timezoneFromPost(text, email),
       queuedAt: Date.now(),
@@ -264,6 +309,7 @@ export function enqueueEmails(emails, query = '', postUrl = '', postText = '', a
     accepted++;
   }
   persistQueue();
+  if (wake) wake();
   work();
   return { accepted, blocked, queueLength: queue.length };
 }
@@ -308,6 +354,77 @@ export function registerAutoMailer(app) {
     const { emails = [], query = '', postUrl = '', postText = '', author = {} } = req.body;
     const result = enqueueEmails(emails, query, postUrl, postText, author);
     res.status(result.error ? 500 : 200).json(result);
+  });
+
+  // Everything the website's mail list shows: waiting, sent, skipped and failed
+  app.get('/api/mail/overview', auth, (req, res) => {
+    const c = cfg();
+    const waitingFor = (j) => (j.force || !c.tzAware || inBusinessHours(j.tz) ? '' : "waiting for the recruiter's office hours");
+    res.json({
+      now: Date.now(),
+      queue: queue.map((j) => ({
+        email: j.email,
+        type: j.type,
+        company: j.company || '',
+        person: j.person || '',
+        role: j.role || '',
+        fit: j.fit,
+        query: j.query || '',
+        postUrl: j.postUrl || '',
+        queuedAt: j.queuedAt,
+        waiting: waitingFor(j),
+      })),
+      sent: store
+        .all()
+        .filter((r) => (r.sends || []).length > 0)
+        .map((r) => ({
+          email: r.email,
+          company: r.company || '',
+          role: r.role || '',
+          subject: r.subject || '',
+          at: r.sends[r.sends.length - 1],
+          followUps: r.followUps || 0,
+          replied: Boolean(r.replied),
+          bounced: Boolean(r.bounced),
+          postUrl: r.postUrl || '',
+        }))
+        .sort((a, b) => String(b.at).localeCompare(String(a.at)))
+        .slice(0, 200),
+      skipped: history.filter((h) => h.status === 'skipped' || h.status === 'failed').slice(0, 100),
+      cancelledCount: cancelled.size,
+    });
+  });
+
+  // Take mails out of the waiting list. { emails: [...] } or { all: true }
+  app.post('/api/mail/cancel', auth, (req, res) => {
+    const { emails = [], all = false } = req.body || {};
+    const pick = new Set(emails.map((e) => String(e).trim().toLowerCase()));
+    let n = 0;
+    for (let i = queue.length - 1; i >= 0; i--) {
+      const j = queue[i];
+      if (j.type !== 'first' && !all) continue; // follow-ups are cancelled only with "all"
+      if (!all && !pick.has(j.email)) continue;
+      queue.splice(i, 1);
+      queued.delete(`${j.type}:${j.email}`);
+      if (j.type === 'first') cancelled.add(j.email);
+      note({ email: j.email, status: 'skipped', reason: 'cancelled by you' });
+      n++;
+    }
+    persistQueue();
+    persistCancelled();
+    res.json({ cancelled: n, queueLength: queue.length });
+  });
+
+  // Skip the wait for the recruiter's office hours for one mail
+  app.post('/api/mail/sendnow', auth, (req, res) => {
+    const email = String((req.body || {}).email || '').trim().toLowerCase();
+    const job = queue.find((j) => j.email === email);
+    if (!job) return res.status(404).json({ error: 'Not in the queue any more.' });
+    job.force = true;
+    persistQueue();
+    if (wake) wake();
+    work();
+    res.json({ ok: true });
   });
 
   app.get('/api/auto-status', auth, (req, res) => {
