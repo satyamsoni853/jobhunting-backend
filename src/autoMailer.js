@@ -96,12 +96,14 @@ async function work() {
   working = false;
 }
 
+export const requireKey = (req, res, next) => {
+  const c = cfg();
+  if (!c.apiKey || req.get('X-API-Key') !== c.apiKey) return res.status(401).json({ error: 'Unauthorized' });
+  next();
+};
+
 export function registerAutoMailer(app) {
-  const auth = (req, res, next) => {
-    const c = cfg();
-    if (!c.apiKey || req.get('X-API-Key') !== c.apiKey) return res.status(401).json({ error: 'Unauthorized' });
-    next();
-  };
+  const auth = requireKey;
 
   app.post('/api/auto-enqueue', auth, (req, res) => {
     const c = cfg();
