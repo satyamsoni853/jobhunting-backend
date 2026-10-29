@@ -4,6 +4,7 @@ import dotenv from 'dotenv';
 import morgan from 'morgan';
 import nodemailer from 'nodemailer';
 import multer from 'multer';
+import { registerAutoMailer } from './autoMailer.js';
 
 // Load environment variables
 dotenv.config();
@@ -174,6 +175,9 @@ app.post('/api/send-emails', upload.single('resume'), async (req, res) => {
     results: results
   });
 });
+
+// Auto-mailer: receives emails from the LinkedIn extension and sends them in the background
+registerAutoMailer(app);
 
 // Start server
 app.listen(PORT, () => {
