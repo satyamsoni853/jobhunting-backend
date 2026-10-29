@@ -1,5 +1,6 @@
 import { ImapFlow } from 'imapflow';
 import { store } from './store.js';
+import { getSmtp } from './smtp.js';
 
 // Reads the Gmail inbox (IMAP) to find who replied and which addresses bounced.
 // Replied people get no follow-up, bounced addresses are never mailed again.
@@ -51,8 +52,7 @@ let lastCheck = { at: null, checked: 0, replies: 0, bounces: 0, error: null };
 export const lastReplyCheck = () => lastCheck;
 
 export async function checkReplies() {
-  const user = process.env.SMTP_USER;
-  const pass = process.env.SMTP_PASS;
+  const { user, pass } = getSmtp();
   if (!user || !pass || process.env.MAIL_DRY_RUN === 'true') return { skipped: true };
 
   const records = store.all().filter((r) => (r.sends || []).length > 0);

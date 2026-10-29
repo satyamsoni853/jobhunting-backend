@@ -24,6 +24,8 @@ const GROUP_DOMAINS = [
   'advancedcardiology.ca',
 ];
 
+import { getSmtp } from './smtp.js';
+
 const GROUP_EMAILS = ['satya.soni@kapoorwealth.com', 'satyam.soni1312@gmail.com', 'satyamsoni853@gmail.com'];
 
 // Company and owner names. A hiring post that mentions one of these is skipped by the hunter.
@@ -41,7 +43,7 @@ export function isBlocked(email) {
   const e = String(email).trim().toLowerCase();
   const domain = e.split('@')[1] || '';
   const domains = [...GROUP_DOMAINS, ...list(process.env.BLOCK_DOMAINS)];
-  const emails = [...GROUP_EMAILS, ...list(process.env.BLOCK_EMAILS), (process.env.SMTP_USER || '').toLowerCase()];
+  const emails = [...GROUP_EMAILS, ...list(process.env.BLOCK_EMAILS), getSmtp().user.toLowerCase()];
 
   if (emails.includes(e)) return true;
   // matches the domain itself and any subdomain (mail.kapoorwealth.com)

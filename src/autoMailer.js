@@ -5,6 +5,7 @@ import { isBlocked } from './blocklist.js';
 import { PROFILE } from './profile.js';
 import { tailorResume, renderPdf, minFit } from './tailor/index.js';
 import { store } from './store.js';
+import { getSmtp } from './smtp.js';
 import { verifyEmail } from './emailCheck.js';
 import { companyFromPost, timezoneFromPost, inBusinessHours } from './company.js';
 import { dueForFollowUp, followUpContent, followUpDays, maxFollowUps, followUpsEnabled } from './followup.js';
@@ -16,8 +17,8 @@ const HOUR = 3600 * 1000;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const cfg = () => ({
-  user: process.env.SMTP_USER,
-  pass: process.env.SMTP_PASS,
+  user: getSmtp().user, // set from the website, env is the fallback
+  pass: getSmtp().pass,
   apiKey: process.env.AUTO_API_KEY,
   enabled: process.env.AUTO_SEND_ENABLED !== 'false',
   dryRun: process.env.MAIL_DRY_RUN === 'true', // build the mails and log them, send nothing
@@ -42,9 +43,17 @@ const note = (entry) => {
   history.length = Math.min(history.length, 50);
 };
 
+let transporterKey = '';
 const getTransporter = (c) => {
-  if (c.dryRun) return (transporter ||= nodemailer.createTransport({ jsonTransport: true }));
-  return (transporter ||= nodemailer.createTransport({ service: 'gmail', auth: { user: c.user, pass: c.pass } }));
+  // rebuilt whenever the login changes (new password from the website)
+  const key = c.dryRun ? 'dry' : `${c.user}:${c.pass}`;
+  if (!transporter || transporterKey !== key) {
+    transporter = c.dryRun
+      ? nodemailer.createTransport({ jsonTransport: true })
+      : nodemailer.createTransport({ service: 'gmail', auth: { user: c.user, pass: c.pass } });
+    transporterKey = key;
+  }
+  return transporter;
 };
 
 function personalize(text, lead) {
@@ -187,7 +196,7 @@ export const requireKey = (req, res, next) => {
 export function enqueueEmails(emails, query = '', postUrl = '', postText = '') {
   const c = cfg();
   if (!c.enabled) return { accepted: 0, message: 'Auto-send disabled' };
-  if (!c.dryRun && (!c.user || !c.pass)) return { error: 'SMTP_USER / SMTP_PASS not set on server' };
+  if (!c.dryRun && (!c.user || !c.pass)) return { error: 'Sender Gmail is not connected. Open the Sender card on the website and connect it.' };
 
   let accepted = 0;
   let blocked = 0;
