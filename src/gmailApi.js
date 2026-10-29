@@ -1,4 +1,5 @@
 import MailComposer from 'nodemailer/lib/mail-composer/index.js';
+import { storedRefreshToken } from './googleAuth.js';
 
 // Sends mail through the Gmail API over HTTPS (port 443). Hosts like Render's free tier block SMTP ports but allow this.
 // Login: an OAuth refresh token for the sender Gmail, kept only in the host's env:
@@ -13,7 +14,7 @@ const clean = (v) => (v || '').replace(/\s+/g, '');
 const creds = () => ({
   id: clean(process.env.GOOGLE_CLIENT_ID),
   secret: clean(process.env.GOOGLE_CLIENT_SECRET),
-  refresh: clean(process.env.GOOGLE_REFRESH_TOKEN),
+  refresh: clean(storedRefreshToken()) || clean(process.env.GOOGLE_REFRESH_TOKEN), // the connect button's token wins over env
 });
 
 export const gmailApiConfigured = () => {

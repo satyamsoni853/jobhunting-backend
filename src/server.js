@@ -11,6 +11,7 @@ import { registerProfile } from './profile.js';
 import { registerOtp, requireProfileToken } from './otp.js';
 import { registerSatyamSend } from './satyamSend.js';
 import { checkGmailApi } from './gmailApi.js';
+import { registerGoogleAuth, initGoogle } from './googleAuth.js';
 import { registerTailor } from './tailor/index.js';
 import { startScheduler, runTickNow } from './scheduler.js';
 import { registerJobs } from './jobs.js';
@@ -198,6 +199,8 @@ registerOtp(app);
 registerProfile(app, requireProfileToken);
 registerSatyamSend(app, requireProfileToken);
 
+registerGoogleAuth(app, requireKey);
+
 // Key protected: tests the Gmail API login without sending a mail
 app.get('/api/mail/check', requireKey, async (req, res) => res.json(await checkGmailApi()));
 registerTailor(app, requireKey);
@@ -218,6 +221,7 @@ try {
     await initSmtp();
     await initSelection();
   }
+  await initGoogle();
 } catch (e) {
   console.error('Database unavailable, using files instead:', e.message);
 }
