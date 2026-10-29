@@ -1,90 +1,55 @@
 import crypto from 'crypto';
-import { sendSystemMail } from './autoMailer.js';
 
-// Login code for the "Satyam" profile. Pressing Satyam on the website mails a 6 digit code to the owner's mailbox;
-// the profile text and resume are served only after the code is entered. Single owner, so limits are global:
-// anybody can press the button, but they cannot read the code or flood the inbox.
-const OTP_TO = () => process.env.OTP_EMAIL || 'satyamsoni853@gmail.com';
-const CODE_TTL = 5 * 60 * 1000;
+// Password for the "Satyam" screen. Pressing Satyam asks for it, and the profile text and the send endpoints work only
+// after it is entered. It is read from the host's env (SATYAM_PIN), never written in code: the repo is public.
+// Anybody can try, so wrong tries are limited: 5 wrong ones lock the screen for 15 minutes (for everybody).
 const TOKEN_TTL = 30 * 60 * 1000;
-const COOLDOWN = Number(process.env.OTP_COOLDOWN_MS ?? 60000);
-const HOURLY_MAX = 5;
 const MAX_ATTEMPTS = 5;
+const LOCK_MS = () => Number(process.env.PIN_LOCK_MS ?? 15 * 60 * 1000);
 
-let pending = null; // { hash, salt, expires, attempts }
-let lastSent = 0;
-let sentTimes = [];
+let wrong = 0;
+let lockedUntil = 0;
 const tokens = new Map(); // token -> expires
 
-const hash = (code, salt) => crypto.createHash('sha256').update(`${salt}:${code}`).digest('hex');
-const mask = (email) => email.replace(/^(.{2})[^@]*(@.*)$/, (_, a, b) => `${a}${'*'.repeat(6)}${b}`);
+const digest = (s) => crypto.createHash('sha256').update(String(s)).digest();
 
 const cleanTokens = () => {
   const now = Date.now();
   for (const [t, exp] of tokens) if (exp < now) tokens.delete(t);
 };
 
-// Guard for the profile routes: a valid token from /verify, sent as X-Profile-Token
+// Guard for the Satyam routes: a valid token from /verify, sent as X-Profile-Token
 export function requireProfileToken(req, res, next) {
   cleanTokens();
   const exp = tokens.get(req.get('X-Profile-Token') || '');
-  if (!exp || exp < Date.now()) return res.status(401).json({ error: 'Verification needed. Press Satyam and enter the code.' });
+  if (!exp || exp < Date.now()) return res.status(401).json({ error: 'Enter your password to continue.' });
   next();
 }
 
 export function registerOtp(app) {
-  app.post('/api/profile/satyam/otp', async (req, res) => {
-    const now = Date.now();
-    sentTimes = sentTimes.filter((t) => now - t < 3600 * 1000);
-    if (now - lastSent < COOLDOWN) {
-      return res.status(429).json({ error: `Wait ${Math.ceil((COOLDOWN - (now - lastSent)) / 1000)} seconds before asking for another code.` });
-    }
-    if (sentTimes.length >= HOURLY_MAX) return res.status(429).json({ error: 'Too many codes requested. Try again later.' });
-
-    const code = String(crypto.randomInt(100000, 1000000));
-    const salt = crypto.randomBytes(8).toString('hex');
-    try {
-      await sendSystemMail(
-        OTP_TO(),
-        `Your Job Hunter code: ${code}`,
-        `Your code is ${code}\n\nIt is valid for 5 minutes. Someone pressed the Satyam button on the Job Hunter website. If that was not you, ignore this mail, nothing is unlocked without the code.`
-      );
-    } catch (e) {
-      console.error('OTP mail failed:', e.message);
-      const notConnected = /not connected/i.test(e.message);
-      return res.status(503).json({
-        error: notConnected
-          ? 'The code mail cannot be sent yet: the sender Gmail is not connected on the server. The owner must enter the Access Key in Auto Hunter (Step 2), then connect Gmail in the Sender Gmail card.'
-          : 'Gmail did not accept the code mail. Reconnect the sender Gmail with a fresh App Password in the Sender Gmail card.',
-      });
-    }
-    pending = { hash: hash(code, salt), salt, expires: now + CODE_TTL, attempts: 0 };
-    lastSent = now;
-    sentTimes.push(now);
-
-    const out = { sent: true, to: mask(OTP_TO()), expiresIn: CODE_TTL / 1000 };
-    // Local testing only: in dry run nothing is mailed, so the code is returned. Never in production.
-    if (process.env.MAIL_DRY_RUN === 'true' && process.env.NODE_ENV !== 'production') {
-      out.devCode = code;
-      console.log(`[dev only] login code: ${code}`);
-    }
-    res.json(out);
-  });
-
   app.post('/api/profile/satyam/verify', (req, res) => {
-    const code = String(req.body.code || '').trim();
-    if (!pending || pending.expires < Date.now()) return res.status(400).json({ error: 'The code expired. Request a new one.' });
-    pending.attempts += 1;
-    if (pending.attempts > MAX_ATTEMPTS) {
-      pending = null;
-      return res.status(429).json({ error: 'Too many wrong tries. Request a new code.' });
-    }
-    const ok = crypto.timingSafeEqual(Buffer.from(hash(code, pending.salt)), Buffer.from(pending.hash));
-    if (!ok) return res.status(401).json({ error: `Wrong code. ${MAX_ATTEMPTS - pending.attempts} ${MAX_ATTEMPTS - pending.attempts === 1 ? "try" : "tries"} left.` });
+    const pin = (process.env.SATYAM_PIN || '').trim();
+    if (!pin) return res.status(503).json({ error: 'The password is not set on the server yet. Add SATYAM_PIN in the server settings.' });
 
-    pending = null; // a code works once
+    const now = Date.now();
+    if (lockedUntil > now) {
+      return res.status(429).json({ error: `Too many wrong tries. Try again in ${Math.ceil((lockedUntil - now) / 60000)} minute(s).` });
+    }
+
+    const given = String(req.body.code ?? req.body.pin ?? '').trim();
+    if (!crypto.timingSafeEqual(digest(given), digest(pin))) {
+      wrong += 1;
+      if (wrong >= MAX_ATTEMPTS) {
+        wrong = 0;
+        lockedUntil = now + LOCK_MS();
+        return res.status(429).json({ error: 'Too many wrong tries. The screen is locked for 15 minutes.' });
+      }
+      return res.status(401).json({ error: `Wrong password. ${MAX_ATTEMPTS - wrong} ${MAX_ATTEMPTS - wrong === 1 ? 'try' : 'tries'} left.` });
+    }
+
+    wrong = 0;
     const token = crypto.randomBytes(24).toString('hex');
-    tokens.set(token, Date.now() + TOKEN_TTL);
+    tokens.set(token, now + TOKEN_TTL);
     res.json({ token, expiresIn: TOKEN_TTL / 1000 });
   });
 }
