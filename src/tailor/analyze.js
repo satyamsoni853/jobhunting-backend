@@ -78,7 +78,8 @@ export function analyzePost(rawText) {
   // ---- seniority, years ----
   const signals = Object.fromEntries(Object.entries(SIGNALS).map(([k, re]) => [k, re.test(text)]));
   const senior = SENIOR_RE.test(head);
-  const junior = JUNIOR_RE.test(text);
+  // "junior" only counts when the title says so or the post welcomes freshers, not when a senior role mentions interns
+  const junior = JUNIOR_RE.test(head) || /fresher|entry[- ]level|new grads?|graduates? welcome|0\s?-\s?[12]\s*(?:yrs?|years)/i.test(text);
   const years = requiredYears(text);
 
   // ---- coverage and fit ----
@@ -95,7 +96,7 @@ export function analyzePost(rawText) {
 
   const reasons = [];
   if (best && best.role.fit === 0) reasons.push(`role is ${best.role.label}, not a match`);
-  if (senior && !junior) {
+  if (senior && !JUNIOR_RE.test(head)) {
     fit -= 0.45;
     reasons.push('senior or lead level');
   }

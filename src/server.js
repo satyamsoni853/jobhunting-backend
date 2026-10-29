@@ -10,6 +10,7 @@ import { registerHunter } from './hunter.js';
 import { registerProfile } from './profile.js';
 import { registerTailor } from './tailor/index.js';
 import { startScheduler, runTickNow } from './scheduler.js';
+import { registerJobs } from './jobs.js';
 import { lastReplyCheck, checkReplies } from './replies.js';
 
 // Load environment variables
@@ -188,6 +189,7 @@ registerSearchRoutes(app, requireKey);
 registerHunter(app, requireKey);
 registerProfile(app, requireKey);
 registerTailor(app, requireKey);
+registerJobs(app);
 
 // Manual triggers for the inbox check and the follow-up pass (the scheduler runs them hourly)
 app.post('/api/replies/check', requireKey, async (req, res) => res.json(await checkReplies()));

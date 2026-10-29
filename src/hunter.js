@@ -4,8 +4,14 @@ import { GROUP_NAME_RE } from './blocklist.js';
 
 // Server-side lead hunter. Source: the monthly Hacker News "Who is hiring?" thread (public Algolia API),
 // where recruiters post an email to apply to. Job boards like RemoteOK/WWR only give apply links, no emails.
-const HN_SEARCH =
-  'https://hn.algolia.com/api/v1/search_by_date?query=who%20is%20hiring&tags=story,author_whoishiring&hitsPerPage=5';
+const HN_SEARCH = (q) =>
+  `https://hn.algolia.com/api/v1/search_by_date?query=${encodeURIComponent(q)}&tags=story,author_whoishiring&hitsPerPage=5`;
+
+// Two monthly threads. In the freelancer one, "SEEKING WORK" posts are other freelancers, only "SEEKING FREELANCER" posts hire.
+const HN_THREADS = [
+  { label: 'HN Who is hiring', search: HN_SEARCH('who is hiring'), title: /^Ask HN: Who is hiring\?/i },
+  { label: 'HN Seeking freelancer', search: HN_SEARCH('seeking freelancer'), title: /^Ask HN: Freelancer\? Seeking freelancer\?/i, only: /^\s*seeking freelancer/i },
+];
 const EMAIL_RE = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
 const SKIP_EMAIL = /\.(png|jpe?g|gif|svg|webp)$/i;
 
@@ -62,25 +68,31 @@ async function runHunt() {
   const selected = loadSelection();
   const matchers = (selected.length ? selected : Object.keys(CATEGORY_WORDS)).map((k) => CATEGORY_WORDS[k]);
 
-  const search = await getJson(HN_SEARCH);
-  const thread = search.hits.find((h) => /^Ask HN: Who is hiring\?/i.test(h.title));
-  if (!thread) throw new Error('No "Who is hiring?" thread found');
+  let found = 0;
+  for (const src of HN_THREADS) {
+    const search = await getJson(src.search);
+    const thread = search.hits.find((h) => src.title.test(h.title));
+    if (!thread) continue; // e.g. the freelancer thread of this month is not posted yet
+    found++;
 
-  const item = await getJson(`https://hn.algolia.com/api/v1/items/${thread.objectID}`);
-  // Top level comments are the individual job postings
-  for (const post of item.children || []) {
-    if (!post.text) continue;
-    state.scanned++;
-    const text = stripHtml(post.text);
-    if (GROUP_NAME_RE.test(text)) continue; // never apply to the user's own employer group
-    if (!matchers.some((re) => re.test(text))) continue;
-    const emails = (text.match(EMAIL_RE) || []).filter((e) => !SKIP_EMAIL.test(e));
-    if (!emails.length) continue;
-    state.matched++;
-    const result = enqueueEmails(emails, 'HN Who is hiring', `https://news.ycombinator.com/item?id=${post.id}`, text);
-    if (result.error) throw new Error(result.error);
-    state.queued += result.accepted || 0;
+    const item = await getJson(`https://hn.algolia.com/api/v1/items/${thread.objectID}`);
+    // Top level comments are the individual postings
+    for (const post of item.children || []) {
+      if (!post.text) continue;
+      state.scanned++;
+      const text = stripHtml(post.text);
+      if (src.only && !src.only.test(text)) continue; // freelancer thread: keep employers, skip people seeking work
+      if (GROUP_NAME_RE.test(text)) continue; // never apply to the user's own employer group
+      if (!matchers.some((re) => re.test(text))) continue;
+      const emails = (text.match(EMAIL_RE) || []).filter((e) => !SKIP_EMAIL.test(e));
+      if (!emails.length) continue;
+      state.matched++;
+      const result = enqueueEmails(emails, src.label, `https://news.ycombinator.com/item?id=${post.id}`, text);
+      if (result.error) throw new Error(result.error);
+      state.queued += result.accepted || 0;
+    }
   }
+  if (!found) throw new Error('No Hacker News hiring thread found');
 }
 
 export function startHunt() {
