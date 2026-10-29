@@ -291,6 +291,7 @@ export function registerAutoMailer(app) {
       totalContacted: store.stats().contacted,
       stats: store.stats(),
       settings: {
+        enabled: c.enabled,
         dryRun: c.dryRun,
         tzAware: c.tzAware,
         followUps: followUpsEnabled() ? `${maxFollowUps()} after ${followUpDays()} days` : 'off',
