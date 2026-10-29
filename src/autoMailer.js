@@ -102,25 +102,31 @@ export const requireKey = (req, res, next) => {
   next();
 };
 
+// Shared by the extension endpoint and the server-side hunter. Skips invalid, already-sent and already-queued emails.
+export function enqueueEmails(emails, query = '', postUrl = '') {
+  const c = cfg();
+  if (!c.enabled) return { accepted: 0, message: 'Auto-send disabled' };
+  if (!c.user || !c.pass) return { error: 'SMTP_USER / SMTP_PASS not set on server' };
+
+  let accepted = 0;
+  for (const raw of Array.isArray(emails) ? emails : [emails]) {
+    const email = String(raw).trim().toLowerCase();
+    if (!EMAIL_RE.test(email) || sent[email] || queued.has(email)) continue;
+    queued.add(email);
+    queue.push({ email, query, postUrl });
+    accepted++;
+  }
+  work();
+  return { accepted, queueLength: queue.length };
+}
+
 export function registerAutoMailer(app) {
   const auth = requireKey;
 
   app.post('/api/auto-enqueue', auth, (req, res) => {
-    const c = cfg();
-    if (!c.enabled) return res.json({ accepted: 0, message: 'Auto-send disabled' });
-    if (!c.user || !c.pass) return res.status(500).json({ error: 'SMTP_USER / SMTP_PASS not set on server' });
-
     const { emails = [], query = '', postUrl = '' } = req.body;
-    let accepted = 0;
-    for (const raw of Array.isArray(emails) ? emails : [emails]) {
-      const email = String(raw).trim().toLowerCase();
-      if (!EMAIL_RE.test(email) || sent[email] || queued.has(email)) continue;
-      queued.add(email);
-      queue.push({ email, query, postUrl });
-      accepted++;
-    }
-    work();
-    res.json({ accepted, queueLength: queue.length });
+    const result = enqueueEmails(emails, query, postUrl);
+    res.status(result.error ? 500 : 200).json(result);
   });
 
   app.get('/api/auto-status', auth, (req, res) => {
