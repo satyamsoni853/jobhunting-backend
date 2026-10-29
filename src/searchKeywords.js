@@ -157,6 +157,23 @@ Object.assign(JOB_CATEGORIES, {
   devops: generated('DevOps / Cloud', ['devops engineer', 'aws cloud engineer']),
   aiml: generated('AI / ML Engineer', ['machine learning engineer', 'ai engineer']),
   wordpress: generated('WordPress / Shopify', ['wordpress developer', 'shopify developer']),
+  mern: generated('MERN Stack Developer', ['mern stack developer', 'mern developer']),
+  reactjs: generated('React JS Developer', ['react js developer', 'react developer']),
+  nextjs: generated('Next.js Developer', ['next.js developer', 'nextjs developer']),
+  nodejs: generated('Node.js Developer', ['node.js developer', 'nodejs backend developer']),
+  angular: generated('Angular Developer', ['angular developer', 'angularjs developer']),
+  vue: generated('Vue.js Developer', ['vue js developer', 'vuejs developer']),
+  javascript: generated('JavaScript / TypeScript', ['javascript developer', 'typescript developer']),
+  php: generated('PHP / Laravel', ['php developer', 'laravel developer']),
+  dotnet: generated('.NET / C#', ['.net developer', 'c# developer']),
+  golang: generated('Golang Developer', ['golang developer', 'go backend developer']),
+  android: generated('Android Developer', ['android developer', 'kotlin developer']),
+  ios: generated('iOS Developer', ['ios developer', 'swift developer']),
+  data: generated('Data Analyst / Engineer', ['data analyst', 'data engineer']),
+  qa: generated('QA / Testing', ['qa engineer', 'software tester']),
+  uiux: generated('UI/UX Designer', ['ui ux designer', 'product designer']),
+  blockchain: generated('Blockchain / Web3', ['blockchain developer', 'web3 developer']),
+  webdev: generated('Web / Software Engineer', ['web developer', 'software engineer']),
 });
 
 // Selected categories survive restarts (same DATA_DIR as the sent log)

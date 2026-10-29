@@ -22,6 +22,23 @@ const CATEGORY_WORDS = {
   devops: /devops|\bsre\b|aws|kubernetes|docker|cloud|terraform|infrastructure/i,
   aiml: /machine learning|\bml\b|\bai\b|\bllm\b|data scien|deep learning/i,
   wordpress: /wordpress|shopify|woocommerce|webflow/i,
+  mern: /\bmern\b|mongodb|react.{0,40}node|node.{0,40}react/i,
+  reactjs: /react(\.?js)?\b/i,
+  nextjs: /next\.?js/i,
+  nodejs: /node(\.?js)?\b/i,
+  angular: /angular/i,
+  vue: /\bvue(\.?js)?\b|nuxt/i,
+  javascript: /javascript|typescript|\bjs\b|\bts\b/i,
+  php: /\bphp\b|laravel|symfony/i,
+  dotnet: /\.net\b|dotnet|c#|asp\.net/i,
+  golang: /golang|\bgo\s+(developer|engineer|backend|lang)/i,
+  android: /android|kotlin/i,
+  ios: /\bios\b|swift|objective-c/i,
+  data: /data (analyst|engineer|scien)|\bsql\b|analytics|etl|bigquery|snowflake/i,
+  qa: /\bqa\b|quality assurance|test(er|ing)|sdet|automation test/i,
+  uiux: /ui\/?ux|product design|designer|figma/i,
+  blockchain: /blockchain|web3|solidity|smart contract|crypto/i,
+  webdev: /web developer|software engineer|software developer|\bswe\b|\bsde\b/i,
 };
 
 const state = { running: false, startedAt: null, finishedAt: null, scanned: 0, matched: 0, queued: 0, error: null };
