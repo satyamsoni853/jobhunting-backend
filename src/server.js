@@ -8,6 +8,7 @@ import { registerAutoMailer, requireKey } from './autoMailer.js';
 import { registerSearchRoutes } from './searchKeywords.js';
 import { registerHunter } from './hunter.js';
 import { registerProfile } from './profile.js';
+import { registerTailor } from './tailor/index.js';
 
 // Load environment variables
 dotenv.config();
@@ -184,6 +185,7 @@ registerAutoMailer(app);
 registerSearchRoutes(app, requireKey);
 registerHunter(app, requireKey);
 registerProfile(app, requireKey);
+registerTailor(app, requireKey);
 
 // Start server
 app.listen(PORT, () => {

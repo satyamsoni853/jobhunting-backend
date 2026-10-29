@@ -77,7 +77,7 @@ async function runHunt() {
     const emails = (text.match(EMAIL_RE) || []).filter((e) => !SKIP_EMAIL.test(e));
     if (!emails.length) continue;
     state.matched++;
-    const result = enqueueEmails(emails, 'HN Who is hiring', `https://news.ycombinator.com/item?id=${post.id}`);
+    const result = enqueueEmails(emails, 'HN Who is hiring', `https://news.ycombinator.com/item?id=${post.id}`, text);
     if (result.error) throw new Error(result.error);
     state.queued += result.accepted || 0;
   }
