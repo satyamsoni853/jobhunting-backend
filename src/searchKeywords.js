@@ -131,6 +131,34 @@ export const JOB_CATEGORIES = {
   },
 };
 
+// More categories, 20 queries each: 10 hiring phrases x 2 role names
+const PHRASES = [
+  'hiring {r}',
+  'we are hiring {r}',
+  'looking for {r}',
+  '{r} opening',
+  '{r} vacancy',
+  '{r} send resume',
+  '{r} email your resume',
+  'immediate joiner {r}',
+  '{r} opportunity',
+  '{r} position',
+];
+const generated = (label, roles) => ({
+  label,
+  queries: roles.flatMap((r) => PHRASES.map((p) => p.replace('{r}', r))),
+});
+
+Object.assign(JOB_CATEGORIES, {
+  internship: generated('Internship / Fresher', ['software intern', 'fresher developer']),
+  mobile: generated('Mobile App Developer', ['react native developer', 'flutter developer']),
+  python: generated('Python Developer', ['python developer', 'django developer']),
+  java: generated('Java Developer', ['java developer', 'spring boot developer']),
+  devops: generated('DevOps / Cloud', ['devops engineer', 'aws cloud engineer']),
+  aiml: generated('AI / ML Engineer', ['machine learning engineer', 'ai engineer']),
+  wordpress: generated('WordPress / Shopify', ['wordpress developer', 'shopify developer']),
+});
+
 // Selected categories survive restarts (same DATA_DIR as the sent log)
 const DATA_DIR = process.env.DATA_DIR || path.join(process.cwd(), 'data');
 const SELECTION_FILE = path.join(DATA_DIR, 'search-selection.json');

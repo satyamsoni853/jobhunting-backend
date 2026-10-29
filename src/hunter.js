@@ -15,6 +15,13 @@ const CATEGORY_WORDS = {
   backend: /back[- ]?end|node(\.?js)?|express|python|django|golang|\bgo\b|java\b|php|laravel|\bapi\b/i,
   fullstack: /full[- ]?stack|mern|mean\b/i,
   remote: /remote/i,
+  internship: /intern(ship)?\b|fresher|entry[- ]level|junior|graduate/i,
+  mobile: /react[- ]native|flutter|mobile|android|\bios\b|swift|kotlin/i,
+  python: /python|django|flask|fastapi/i,
+  java: /\bjava\b|spring|kotlin/i,
+  devops: /devops|\bsre\b|aws|kubernetes|docker|cloud|terraform|infrastructure/i,
+  aiml: /machine learning|\bml\b|\bai\b|\bllm\b|data scien|deep learning/i,
+  wordpress: /wordpress|shopify|woocommerce|webflow/i,
 };
 
 const state = { running: false, startedAt: null, finishedAt: null, scanned: 0, matched: 0, queued: 0, error: null };
