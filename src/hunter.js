@@ -1,5 +1,6 @@
 import { enqueueEmails } from './autoMailer.js';
 import { loadSelection } from './searchKeywords.js';
+import { GROUP_NAME_RE } from './blocklist.js';
 
 // Server-side lead hunter. Source: the monthly Hacker News "Who is hiring?" thread (public Algolia API),
 // where recruiters post an email to apply to. Job boards like RemoteOK/WWR only give apply links, no emails.
@@ -71,6 +72,7 @@ async function runHunt() {
     if (!post.text) continue;
     state.scanned++;
     const text = stripHtml(post.text);
+    if (GROUP_NAME_RE.test(text)) continue; // never apply to the user's own employer group
     if (!matchers.some((re) => re.test(text))) continue;
     const emails = (text.match(EMAIL_RE) || []).filter((e) => !SKIP_EMAIL.test(e));
     if (!emails.length) continue;

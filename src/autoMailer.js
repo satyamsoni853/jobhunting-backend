@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import nodemailer from 'nodemailer';
+import { isBlocked } from './blocklist.js';
 
 // Auto-mailer: the LinkedIn extension pushes captured emails here, a background queue sends them one by one.
 // All config comes from env so nothing sensitive lives in the extension.
@@ -66,6 +67,10 @@ async function work() {
     const job = queue.shift();
     queued.delete(job.email);
     if (sent[job.email]) continue;
+    if (isBlocked(job.email)) {
+      console.log(`⛔ Skipped blocked address ${job.email}`);
+      continue;
+    }
     try {
       transporter ||= nodemailer.createTransport({ service: 'gmail', auth: { user: c.user, pass: c.pass } });
       const name = process.env.RESUME_FILENAME || 'Satyam_Soni_Resume.pdf';
@@ -109,15 +114,20 @@ export function enqueueEmails(emails, query = '', postUrl = '') {
   if (!c.user || !c.pass) return { error: 'SMTP_USER / SMTP_PASS not set on server' };
 
   let accepted = 0;
+  let blocked = 0;
   for (const raw of Array.isArray(emails) ? emails : [emails]) {
     const email = String(raw).trim().toLowerCase();
     if (!EMAIL_RE.test(email) || sent[email] || queued.has(email)) continue;
+    if (isBlocked(email)) {
+      blocked++;
+      continue;
+    }
     queued.add(email);
     queue.push({ email, query, postUrl });
     accepted++;
   }
   work();
-  return { accepted, queueLength: queue.length };
+  return { accepted, blocked, queueLength: queue.length };
 }
 
 export function registerAutoMailer(app) {
