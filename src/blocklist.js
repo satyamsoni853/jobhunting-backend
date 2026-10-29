@@ -18,13 +18,17 @@ const GROUP_DOMAINS = [
   'xevyo.com',
   'dilwalk.ca',
   'dilwalk.com',
+  // Dr. Anmol Kapoor's other companies (domains as listed on his LinkedIn profile)
+  'albertacardiology.ca',
+  'southernalbertamedical.ca',
+  'advancedcardiology.ca',
 ];
 
 const GROUP_EMAILS = ['satya.soni@kapoorwealth.com'];
 
 // Company and owner names. A hiring post that mentions one of these is skipped by the hunter.
 export const GROUP_NAME_RE =
-  /kapoor\s*wealth|\bkwp\b|bio\s?aro\b|golden\s*sands|cardi\s?ai\b|anryton|biochain|panomiq|vautra|biongevity|genelio|xevyo|dil\s*walk|anmol\s*kapoor/i;
+  /kapoor\s*wealth|\bkwp\b|bio\s?aro\b|golden\s*sands|cardi\s?ai\b|anryton|biochain|panomiq|vautra|biongevity|genelio|xevyo|dil\s*walk|anmol\s*kapoor|alberta\s*cardiology|southern\s*alberta\s*medical|advanced\s*cardiology\s*consultants/i;
 
 const list = (v) =>
   (v || '')
