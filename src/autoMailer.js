@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import nodemailer from 'nodemailer';
-import { isBlocked } from './blocklist.js';
+import { isBlocked, isBlockedAuthor } from './blocklist.js';
 import { PROFILE, subjectAtCompany } from './profile.js';
 import { tailorResume, renderPdf, minFit } from './tailor/index.js';
 import { store } from './store.js';
@@ -196,7 +196,7 @@ export const requireKey = (req, res, next) => {
 };
 
 // Shared by the extension endpoint and the server-side hunter. Skips invalid, already-mailed and already-queued addresses.
-export function enqueueEmails(emails, query = '', postUrl = '', postText = '') {
+export function enqueueEmails(emails, query = '', postUrl = '', postText = '', author = {}) {
   const c = cfg();
   if (!c.enabled) return { accepted: 0, message: 'Auto-send disabled' };
   if (!c.dryRun && (!c.user || !c.pass)) return { error: 'Sender Gmail is not connected. Open the Sender card on the website and connect it.' };
@@ -204,6 +204,8 @@ export function enqueueEmails(emails, query = '', postUrl = '', postText = '') {
   let accepted = 0;
   let blocked = 0;
   const text = String(postText || '').slice(0, 6000);
+  // a post written by a blocked person is skipped whole, even if it carries an unrelated email
+  if (isBlockedAuthor(author)) return { accepted: 0, blocked: (Array.isArray(emails) ? emails : [emails]).length, queueLength: queue.length, reason: 'blocked author' };
   for (const raw of Array.isArray(emails) ? emails : [emails]) {
     const email = String(raw).trim().toLowerCase();
     if (!EMAIL_RE.test(email) || store.has(email) || queued.has(`first:${email}`)) continue;
@@ -257,8 +259,8 @@ export function registerAutoMailer(app) {
   const auth = requireKey;
 
   app.post('/api/auto-enqueue', auth, (req, res) => {
-    const { emails = [], query = '', postUrl = '', postText = '' } = req.body;
-    const result = enqueueEmails(emails, query, postUrl, postText);
+    const { emails = [], query = '', postUrl = '', postText = '', author = {} } = req.body;
+    const result = enqueueEmails(emails, query, postUrl, postText, author);
     res.status(result.error ? 500 : 200).json(result);
   });
 

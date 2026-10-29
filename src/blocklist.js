@@ -38,6 +38,16 @@ const list = (v) =>
     .map((s) => s.trim().toLowerCase())
     .filter(Boolean);
 
+// Posts written by these people are skipped, whatever email they contain. Set BLOCK_AUTHORS=profile-slug,Full Name
+// (a LinkedIn profile slug such as jane-doe-123abc, or the exact name). Kept in env, not in code, because it names people.
+export function isBlockedAuthor(author = {}) {
+  const profile = String(author.profile || '').toLowerCase();
+  const name = String(author.name || '').trim().toLowerCase();
+  // split on commas only: a full name contains spaces
+  const authors = (process.env.BLOCK_AUTHORS || '').split(/[,;]+/).map((a) => a.trim().toLowerCase()).filter(Boolean);
+  return authors.some((a) => (profile && profile.includes(a)) || (name && name === a));
+}
+
 // Env can add more: BLOCK_DOMAINS=a.com,b.com  BLOCK_EMAILS=x@y.com
 export function isBlocked(email) {
   const e = String(email).trim().toLowerCase();
