@@ -24,7 +24,7 @@ const GROUP_EMAILS = ['satya.soni@kapoorwealth.com'];
 
 // Company and owner names. A hiring post that mentions one of these is skipped by the hunter.
 export const GROUP_NAME_RE =
-  /kapoor\s*wealth|bio\s?aro\b|golden\s*sands|cardi\s?ai\b|anryton|biochain|panomiq|vautra|biongevity|genelio|xevyo|dil\s*walk|anmol\s*kapoor/i;
+  /kapoor\s*wealth|\bkwp\b|bio\s?aro\b|golden\s*sands|cardi\s?ai\b|anryton|biochain|panomiq|vautra|biongevity|genelio|xevyo|dil\s*walk|anmol\s*kapoor/i;
 
 const list = (v) =>
   (v || '')
