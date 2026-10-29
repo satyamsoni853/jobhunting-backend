@@ -18,6 +18,7 @@ import { registerJobs } from './jobs.js';
 import { registerSmtp, initSmtp } from './smtp.js';
 import { initDb } from './db.js';
 import { initStore } from './store.js';
+import { initQueue } from './autoMailer.js';
 import { initSelection } from './searchKeywords.js';
 import { lastReplyCheck, checkReplies } from './replies.js';
 
@@ -220,6 +221,7 @@ try {
     await initStore();
     await initSmtp();
     await initSelection();
+    await initQueue();
   }
   await initGoogle();
 } catch (e) {

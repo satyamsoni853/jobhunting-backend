@@ -7,7 +7,7 @@ import { PROFILE, subjectAtCompany, loadResume } from './profile.js';
 import { tailorResume, renderPdf, minFit } from './tailor/index.js';
 import { store } from './store.js';
 import { getSmtp } from './smtp.js';
-import { dbEnabled } from './db.js';
+import { dbEnabled, getKv, setKv } from './db.js';
 import { gmailApiConfigured, gmailApiTransport } from './gmailApi.js';
 import { verifyEmail } from './emailCheck.js';
 import { companyFromPost, personFromEmail, greeting, timezoneFromPost, inBusinessHours } from './company.js';
@@ -38,6 +38,30 @@ const cfg = () => ({
 
 const queue = []; // jobs: { type: 'first' | 'followup', email, query, postUrl, postText, company, tz, queuedAt }
 const queued = new Set(); // "first:a@b.com"
+// The waiting jobs are copied to the database, so a free server that falls asleep does not lose them.
+// A job leaves the saved copy just before it is sent, so a crash can drop one mail but never sends one twice.
+const persistQueue = () => {
+  if (dbEnabled()) setKv('queue', JSON.stringify(queue));
+};
+
+export async function initQueue() {
+  if (!dbEnabled()) return 0;
+  const raw = await getKv('queue');
+  let n = 0;
+  for (const job of raw ? JSON.parse(raw) : []) {
+    const key = `${job.type}:${job.email}`;
+    if (queued.has(key) || (job.type === 'first' && store.has(job.email))) continue; // already mailed meanwhile
+    queued.add(key);
+    queue.push(job);
+    n++;
+  }
+  if (n) {
+    console.log(`📥 Restored ${n} waiting mail(s) from the database`);
+    work();
+  }
+  return n;
+}
+
 let working = false;
 let transporter = null;
 const history = []; // last 50 results, for /api/auto-status
@@ -182,6 +206,7 @@ async function work() {
     }
     const job = queue.splice(idx, 1)[0];
     queued.delete(`${job.type}:${job.email}`);
+    persistQueue();
 
     let didSend = false;
     try {
@@ -238,6 +263,7 @@ export function enqueueEmails(emails, query = '', postUrl = '', postText = '', a
     });
     accepted++;
   }
+  persistQueue();
   work();
   return { accepted, blocked, queueLength: queue.length };
 }
@@ -253,7 +279,10 @@ export function queueFollowUps() {
     queue.push({ type: 'followup', email: rec.email, tz: rec.tz ?? null, queuedAt: Date.now() });
     n++;
   }
-  if (n) work();
+  if (n) {
+    persistQueue();
+    work();
+  }
   return n;
 }
 
