@@ -8,6 +8,7 @@ import { tailorResume, renderPdf, minFit } from './tailor/index.js';
 import { store } from './store.js';
 import { getSmtp } from './smtp.js';
 import { dbEnabled } from './db.js';
+import { gmailApiConfigured, gmailApiTransport } from './gmailApi.js';
 import { verifyEmail } from './emailCheck.js';
 import { companyFromPost, personFromEmail, greeting, timezoneFromPost, inBusinessHours } from './company.js';
 import { dueForFollowUp, followUpContent, followUpDays, maxFollowUps, followUpsEnabled } from './followup.js';
@@ -19,8 +20,9 @@ const HOUR = 3600 * 1000;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const cfg = () => ({
-  user: getSmtp().user, // set from the website, env is the fallback
+  user: getSmtp().user || (gmailApiConfigured() ? PROFILE.email : ''), // set from the website, env is the fallback
   pass: getSmtp().pass,
+  gmailApi: gmailApiConfigured(), // sends over HTTPS, works where SMTP ports are blocked
   apiKey: (process.env.AUTO_API_KEY || '').trim(), // a space or newline pasted after the key must not break the login
   enabled: process.env.AUTO_SEND_ENABLED !== 'false',
   dryRun: process.env.MAIL_DRY_RUN === 'true', // build the mails and log them, send nothing
@@ -47,12 +49,14 @@ const note = (entry) => {
 
 let transporterKey = '';
 const getTransporter = (c) => {
-  // rebuilt whenever the login changes (new password from the website)
-  const key = c.dryRun ? 'dry' : `${c.user}:${c.pass}`;
+  // rebuilt whenever the way of sending or the login changes
+  const key = c.dryRun ? 'dry' : c.gmailApi ? 'api' : `${c.user}:${c.pass}`;
   if (!transporter || transporterKey !== key) {
     transporter = c.dryRun
       ? nodemailer.createTransport({ jsonTransport: true })
-      : nodemailer.createTransport({ service: 'gmail', auth: { user: c.user, pass: c.pass } });
+      : c.gmailApi
+        ? gmailApiTransport()
+        : nodemailer.createTransport({ service: 'gmail', auth: { user: c.user, pass: c.pass } });
     transporterKey = key;
   }
   return transporter;
@@ -128,6 +132,7 @@ async function sendFirst(job, c) {
     tz: job.tz ?? null,
     postUrl: job.postUrl || '',
     messageId: info.messageId,
+    threadId: info.threadId || '',
   });
   note({ email, status: c.dryRun ? 'dry-run' : 'success', id: info.messageId, subject, tailored, company: job.company || undefined, person: job.person || undefined });
   console.log(`${c.dryRun ? '🧪 Dry run' : '✔️ Auto-sent'} to ${email}`);
@@ -147,6 +152,7 @@ async function sendFollowUp(job, c) {
     text: mail.text,
     inReplyTo: rec.messageId, // threads it under the first mail
     references: rec.messageId,
+    threadId: rec.threadId || undefined, // Gmail API: keeps it in the same conversation
   });
   store.recordSend(job.email, { followUps: (rec.followUps || 0) + 1, lastFollowUpAt: new Date().toISOString() });
   note({ email: job.email, status: c.dryRun ? 'dry-run' : 'followup', id: info.messageId, subject: mail.subject });
@@ -202,7 +208,7 @@ export const requireKey = (req, res, next) => {
 export function enqueueEmails(emails, query = '', postUrl = '', postText = '', author = {}, override = null) {
   const c = cfg();
   if (!c.enabled) return { accepted: 0, message: 'Auto-send disabled' };
-  if (!c.dryRun && (!c.user || !c.pass)) return { error: 'Sender Gmail is not connected. Open the Sender card on the website and connect it.' };
+  if (!c.dryRun && !c.gmailApi && (!c.user || !c.pass)) return { error: 'Sender Gmail is not connected. Open the Sender card on the website and connect it.' };
 
   let accepted = 0;
   let blocked = 0;
@@ -256,13 +262,13 @@ export const mailerConfig = cfg;
 // What the Satyam screen shows after the login code: queue, today's count and the latest results
 export function satyamStatus() {
   const c = cfg();
-  return { queueLength: queue.length, sentToday: store.sentToday(), dailyLimit: c.dailyLimit, connected: Boolean(c.user && c.pass) || c.dryRun, recent: history.slice(0, 15) };
+  return { queueLength: queue.length, sentToday: store.sentToday(), dailyLimit: c.dailyLimit, connected: Boolean(c.user && c.pass) || c.gmailApi || c.dryRun, recent: history.slice(0, 15) };
 }
 
 // A plain system mail (for example the login code). Not part of the queue, no resume, no limits.
 export async function sendSystemMail(to, subject, text) {
   const c = cfg();
-  if (!c.dryRun && (!c.user || !c.pass)) throw new Error('Sender Gmail is not connected on the server.');
+  if (!c.dryRun && !c.gmailApi && (!c.user || !c.pass)) throw new Error('Sender Gmail is not connected on the server.');
   return getTransporter(c).sendMail({ from: `"Job Hunter" <${c.user || 'me@localhost'}>`, to, subject, text });
 }
 
@@ -290,6 +296,7 @@ export function registerAutoMailer(app) {
         followUps: followUpsEnabled() ? `${maxFollowUps()} after ${followUpDays()} days` : 'off',
         minFit: minFit(),
         storage: dbEnabled() ? 'database' : 'files',
+        sendVia: c.dryRun ? 'dry run' : c.gmailApi ? 'Gmail API (HTTPS)' : 'SMTP',
       },
       recent: history,
     });
