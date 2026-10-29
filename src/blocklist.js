@@ -30,7 +30,15 @@ const GROUP_EMAILS = ['satya.soni@kapoorwealth.com', 'satyam.soni1312@gmail.com'
 
 // Company and owner names. A hiring post that mentions one of these is skipped by the hunter.
 export const GROUP_NAME_RE =
-  /kapoor\s*wealth|\bkwp\b|bio\s?aro\b|golden\s*sands|cardi\s?ai\b|anryton|biochain|panomiq|vautra|biongevity|genelio|xevyo|dil\s*walk|anmol\s*kapoor|panaum|antisocial\s*talks|alberta\s*cardiology|southern\s*alberta\s*medical|advanced\s*cardiology\s*consultants/i;
+  /kapoor\s*wealth|\bkwp\b|bio[\s-]?ar[oc](?!h)|golden[\s-]*c?[\s-]*sands|cardi[\s-]?ai\b|anryton|biochain|panomiq|vautra|biongevity|genelio|xevyou?|dil[\s-]?walk|anmol\s*kapoor|panaum|antisocial\s*talks|alberta\s*cardiology|southern\s*alberta\s*medical|advanced\s*cardiology\s*consultants/i;
+
+// The same names inside an email domain, on any extension: xevyo.ai, goldensands.ae, bio-aro.com, bioarolabs.com...
+// Dots, dashes and underscores are removed first so "golden-sands" and "goldensands" both match.
+const DOMAIN_WORDS_RE =
+  /kapoorwealth|bioar[oc](?!h)|goldensands|goldencsands|cardiai|anryton|panomiq|panaum|vautra|biongevity|genelio|xevyou?|dilwalk|albertacardiology|southernalbertamedical|advancedcardiology/;
+
+// True when text (a post) names the group, the owner or one of the companies
+export const mentionsGroup = (text) => GROUP_NAME_RE.test(String(text || ''));
 
 const list = (v) =>
   (v || '')
@@ -57,5 +65,6 @@ export function isBlocked(email) {
 
   if (emails.includes(e)) return true;
   // matches the domain itself and any subdomain (mail.kapoorwealth.com)
-  return domains.some((d) => domain === d || domain.endsWith(`.${d}`));
+  if (domains.some((d) => domain === d || domain.endsWith(`.${d}`))) return true;
+  return DOMAIN_WORDS_RE.test(domain.replace(/[.\-_]/g, ''));
 }

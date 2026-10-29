@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import nodemailer from 'nodemailer';
-import { isBlocked, isBlockedAuthor } from './blocklist.js';
+import { isBlocked, isBlockedAuthor, mentionsGroup } from './blocklist.js';
 import { PROFILE, subjectAtCompany } from './profile.js';
 import { tailorResume, renderPdf, minFit } from './tailor/index.js';
 import { store } from './store.js';
@@ -205,6 +205,7 @@ export function enqueueEmails(emails, query = '', postUrl = '', postText = '', a
   let blocked = 0;
   const text = String(postText || '').slice(0, 6000);
   // a post written by a blocked person is skipped whole, even if it carries an unrelated email
+  if (mentionsGroup(text)) return { accepted: 0, blocked: (Array.isArray(emails) ? emails : [emails]).length, queueLength: queue.length, reason: 'post names the Kapoor Wealth group' };
   if (isBlockedAuthor(author)) return { accepted: 0, blocked: (Array.isArray(emails) ? emails : [emails]).length, queueLength: queue.length, reason: 'blocked author' };
   for (const raw of Array.isArray(emails) ? emails : [emails]) {
     const email = String(raw).trim().toLowerCase();
