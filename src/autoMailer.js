@@ -88,8 +88,8 @@ async function sendFirst(job, c) {
 
   const lead = { email, query: job.query || '', link: job.postUrl || '' };
   const name = process.env.RESUME_FILENAME || 'Satyam_Soni_Resume.pdf';
-  let subject = personalize(c.subject, lead);
-  let text = personalize(c.body, lead);
+  let subject = personalize(job.override?.subject || c.subject, lead);
+  let text = personalize(job.override?.body || c.body, lead);
   let attachments = resumeAttachment(c);
   let tailored = null;
   let role = '';
@@ -201,7 +201,7 @@ export const requireKey = (req, res, next) => {
 };
 
 // Shared by the extension endpoint and the server-side hunter. Skips invalid, already-mailed and already-queued addresses.
-export function enqueueEmails(emails, query = '', postUrl = '', postText = '', author = {}) {
+export function enqueueEmails(emails, query = '', postUrl = '', postText = '', author = {}, override = null) {
   const c = cfg();
   if (!c.enabled) return { accepted: 0, message: 'Auto-send disabled' };
   if (!c.dryRun && (!c.user || !c.pass)) return { error: 'Sender Gmail is not connected. Open the Sender card on the website and connect it.' };
@@ -227,6 +227,7 @@ export function enqueueEmails(emails, query = '', postUrl = '', postText = '', a
       postUrl,
       postText: text,
       company: companyFromPost(text, email),
+      override, // { subject, body } typed by the owner for this batch
       person: personFromEmail(email, text),
       tz: timezoneFromPost(text, email),
       queuedAt: Date.now(),
@@ -253,6 +254,12 @@ export function queueFollowUps() {
 }
 
 export const mailerConfig = cfg;
+
+// What the Satyam screen shows after the login code: queue, today's count and the latest results
+export function satyamStatus() {
+  const c = cfg();
+  return { queueLength: queue.length, sentToday: store.sentToday(), dailyLimit: c.dailyLimit, connected: Boolean(c.user && c.pass) || c.dryRun, recent: history.slice(0, 15) };
+}
 
 // A plain system mail (for example the login code). Not part of the queue, no resume, no limits.
 export async function sendSystemMail(to, subject, text) {

@@ -55,7 +55,10 @@ try {
 // The login the mailer should use right now
 export function getSmtp() {
   if (current) return { user: current.user, pass: current.pass, source: 'website' };
-  if (process.env.SMTP_USER && process.env.SMTP_PASS) return { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS, source: 'env' };
+  // Only SMTP_PASS is needed in the host's env: the user defaults to the Satyam profile address. App passwords are shown with spaces, they are dropped.
+  if (process.env.SMTP_PASS) {
+    return { user: (process.env.SMTP_USER || PROFILE.email).trim().toLowerCase(), pass: process.env.SMTP_PASS.replace(/\s+/g, ''), source: 'env' };
+  }
   return { user: '', pass: '', source: 'none' };
 }
 
