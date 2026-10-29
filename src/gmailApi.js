@@ -6,10 +6,14 @@ import MailComposer from 'nodemailer/lib/mail-composer/index.js';
 const TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const SEND_URL = 'https://gmail.googleapis.com/gmail/v1/users/me/messages/send';
 
+// Client ids, secrets and tokens never contain whitespace. A value copied from a wrapped line (the Google dialog shows
+// the client id on two lines) can carry a newline inside it, so every whitespace character is dropped.
+const clean = (v) => (v || '').replace(/\s+/g, '');
+
 const creds = () => ({
-  id: (process.env.GOOGLE_CLIENT_ID || '').trim(),
-  secret: (process.env.GOOGLE_CLIENT_SECRET || '').trim(),
-  refresh: (process.env.GOOGLE_REFRESH_TOKEN || '').trim(),
+  id: clean(process.env.GOOGLE_CLIENT_ID),
+  secret: clean(process.env.GOOGLE_CLIENT_SECRET),
+  refresh: clean(process.env.GOOGLE_REFRESH_TOKEN),
 });
 
 export const gmailApiConfigured = () => {
