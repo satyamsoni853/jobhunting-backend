@@ -36,7 +36,7 @@ async function accessToken() {
   const j = await res.json().catch(() => ({}));
   if (!res.ok || !j.access_token) {
     const why = j.error_description || j.error || `status ${res.status}`;
-    throw new Error(`Google login failed (${why}). Create a new refresh token and update GOOGLE_REFRESH_TOKEN.`);
+    throw Object.assign(new Error(`Google login failed (${why}). Create a new refresh token and update GOOGLE_REFRESH_TOKEN.`), { googleCode: j.error || `http_${res.status}` });
   }
   cached = { token: j.access_token, exp: Date.now() + (j.expires_in || 3600) * 1000, scope: j.scope || '' };
   return cached.token;
@@ -63,14 +63,24 @@ export function gmailApiTransport() {
   };
 }
 
+// Only the shape and length of each value, never the value: enough to see a cut-off or swapped copy
+export function gmailApiShape() {
+  const c = creds();
+  return {
+    clientId: { length: c.id.length, looksRight: /^\d+-[a-z0-9]+\.apps\.googleusercontent\.com$/.test(c.id) },
+    clientSecret: { length: c.secret.length, looksRight: /^GOCSPX-[\w-]{28}$/.test(c.secret) },
+    refreshToken: { length: c.refresh.length, looksRight: /^1\/\/[\w-]{20,}$/.test(c.refresh) },
+  };
+}
+
 // Asks Google for an access token without sending anything: proves the client id, secret and refresh token are valid
 export async function checkGmailApi() {
-  if (!gmailApiConfigured()) return { ok: false, error: 'GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET or GOOGLE_REFRESH_TOKEN is missing.' };
+  if (!gmailApiConfigured()) return { ok: false, error: 'GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET or GOOGLE_REFRESH_TOKEN is missing.', shape: gmailApiShape() };
   try {
     cached = { token: '', exp: 0, scope: '' }; // always a fresh exchange
     await accessToken();
     return { ok: true, canSend: cached.scope.includes('gmail.send'), scope: cached.scope };
   } catch (e) {
-    return { ok: false, error: e.message };
+    return { ok: false, error: e.message, googleCode: e.googleCode, shape: gmailApiShape() };
   }
 }
