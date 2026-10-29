@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import nodemailer from 'nodemailer';
 import { isBlocked } from './blocklist.js';
+import { PROFILE } from './profile.js';
 
 // Auto-mailer: the LinkedIn extension pushes captured emails here, a background queue sends them one by one.
 // All config comes from env so nothing sensitive lives in the extension.
@@ -14,10 +15,8 @@ const cfg = () => ({
   pass: process.env.SMTP_PASS,
   apiKey: process.env.AUTO_API_KEY,
   enabled: process.env.AUTO_SEND_ENABLED !== 'false',
-  subject: process.env.AUTO_SUBJECT || 'Application for Software Engineer Position - Satyam Soni',
-  body:
-    (process.env.AUTO_BODY ||
-      'Dear Hiring Team,\\n\\nI am writing to apply for the Software Engineer role. I am an expert in full-stack Javascript, React, and Node.js.\\n\\nI have attached my resume. Looking forward to hearing from you!\\n\\nBest,\\nSatyam Soni').replace(/\\n/g, '\n'),
+  subject: process.env.AUTO_SUBJECT || PROFILE.subject,
+  body: process.env.AUTO_BODY ? process.env.AUTO_BODY.replace(/\\n/g, '\n') : PROFILE.body,
   resumePath: process.env.RESUME_PATH || path.join(process.cwd(), 'resume', 'resume.pdf'),
   dailyLimit: Number(process.env.DAILY_LIMIT || 300), // Gmail free cap is ~500/day, stay below it
   minDelay: Number(process.env.MIN_DELAY_MS || 30000),

@@ -7,6 +7,7 @@ import multer from 'multer';
 import { registerAutoMailer, requireKey } from './autoMailer.js';
 import { registerSearchRoutes } from './searchKeywords.js';
 import { registerHunter } from './hunter.js';
+import { registerProfile } from './profile.js';
 
 // Load environment variables
 dotenv.config();
@@ -182,6 +183,7 @@ app.post('/api/send-emails', upload.single('resume'), async (req, res) => {
 registerAutoMailer(app);
 registerSearchRoutes(app, requireKey);
 registerHunter(app, requireKey);
+registerProfile(app, requireKey);
 
 // Start server
 app.listen(PORT, () => {
