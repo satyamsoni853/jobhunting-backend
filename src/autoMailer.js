@@ -4,126 +4,175 @@ import nodemailer from 'nodemailer';
 import { isBlocked } from './blocklist.js';
 import { PROFILE } from './profile.js';
 import { tailorResume, renderPdf, minFit } from './tailor/index.js';
+import { store } from './store.js';
+import { verifyEmail } from './emailCheck.js';
+import { companyFromPost, timezoneFromPost, inBusinessHours } from './company.js';
+import { dueForFollowUp, followUpContent, followUpDays, maxFollowUps, followUpsEnabled } from './followup.js';
 
-// Auto-mailer: the LinkedIn extension pushes captured emails here, a background queue sends them one by one.
+// Auto-mailer: the LinkedIn extension and the hunter push addresses here, a background queue sends them one by one.
 // All config comes from env so nothing sensitive lives in the extension.
-const DATA_DIR = process.env.DATA_DIR || path.join(process.cwd(), 'data');
-const SENT_FILE = path.join(DATA_DIR, 'sent.json');
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const HOUR = 3600 * 1000;
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const cfg = () => ({
   user: process.env.SMTP_USER,
   pass: process.env.SMTP_PASS,
   apiKey: process.env.AUTO_API_KEY,
   enabled: process.env.AUTO_SEND_ENABLED !== 'false',
+  dryRun: process.env.MAIL_DRY_RUN === 'true', // build the mails and log them, send nothing
   subject: process.env.AUTO_SUBJECT || PROFILE.subject,
   body: process.env.AUTO_BODY ? process.env.AUTO_BODY.replace(/\\n/g, '\n') : PROFILE.body,
   resumePath: process.env.RESUME_PATH || path.join(process.cwd(), 'resume', 'resume.pdf'),
   tailor: process.env.TAILOR_RESUME !== 'false', // per-post resume and note, set false to always send the default
+  tzAware: process.env.SEND_TZ_AWARE !== 'false', // send in the recruiter's business hours when the time zone is known
   dailyLimit: Number(process.env.DAILY_LIMIT || 300), // Gmail free cap is ~500/day, stay below it
   minDelay: Number(process.env.MIN_DELAY_MS || 30000),
   maxDelay: Number(process.env.MAX_DELAY_MS || 60000),
 });
 
-let sent = {}; // email -> ISO date
-try {
-  sent = JSON.parse(fs.readFileSync(SENT_FILE, 'utf8'));
-} catch {
-  sent = {};
-}
-const saveSent = () => {
-  try {
-    fs.mkdirSync(DATA_DIR, { recursive: true });
-    fs.writeFileSync(SENT_FILE, JSON.stringify(sent, null, 2));
-  } catch (e) {
-    console.error('Could not persist sent log:', e.message);
-  }
-};
-
-const queue = [];
-const queued = new Set();
+const queue = []; // jobs: { type: 'first' | 'followup', email, query, postUrl, postText, company, tz, queuedAt }
+const queued = new Set(); // "first:a@b.com"
 let working = false;
 let transporter = null;
 const history = []; // last 50 results, for /api/auto-status
 
-const sentToday = () => {
-  const today = new Date().toISOString().slice(0, 10);
-  return Object.values(sent).filter((d) => d.startsWith(today)).length;
+const note = (entry) => {
+  history.unshift({ at: new Date().toISOString(), ...entry });
+  history.length = Math.min(history.length, 50);
+};
+
+const getTransporter = (c) => {
+  if (c.dryRun) return (transporter ||= nodemailer.createTransport({ jsonTransport: true }));
+  return (transporter ||= nodemailer.createTransport({ service: 'gmail', auth: { user: c.user, pass: c.pass } }));
 };
 
 function personalize(text, lead) {
   return text.replace(/\{\{\s*(\w+)\s*\}\}/g, (_, k) => lead[k.toLowerCase()] ?? '');
 }
 
+const resumeAttachment = (c) => {
+  const name = process.env.RESUME_FILENAME || 'Satyam_Soni_Resume.pdf';
+  if (process.env.RESUME_BASE64) return [{ filename: name, content: Buffer.from(process.env.RESUME_BASE64, 'base64') }];
+  if (fs.existsSync(c.resumePath)) return [{ filename: name, path: c.resumePath }];
+  return [];
+};
+
+// Returns true when a mail was really sent, so the worker knows whether to wait before the next one
+async function sendFirst(job, c) {
+  const { email } = job;
+  if (store.has(email)) return false;
+  if (isBlocked(email)) {
+    console.log(`⛔ Skipped blocked address ${email}`);
+    return false;
+  }
+
+  const check = await verifyEmail(email);
+  if (!check.ok) {
+    store.update(email, { status: 'invalid', reason: check.reason });
+    note({ email, status: 'skipped', reason: check.reason });
+    console.log(`🚫 Skipped ${email}: ${check.reason}`);
+    return false;
+  }
+
+  const lead = { email, query: job.query || '', link: job.postUrl || '' };
+  const name = process.env.RESUME_FILENAME || 'Satyam_Soni_Resume.pdf';
+  let subject = personalize(c.subject, lead);
+  let text = personalize(c.body, lead);
+  let attachments = resumeAttachment(c);
+  let tailored = null;
+  let role = '';
+  if (job.company) text = text.replace(/^Dear Hiring Team,/, `Dear ${job.company} Team,`);
+
+  // With the recruiter's post available, build the resume and note for that role (rules only, no AI)
+  if (job.postText && c.tailor) {
+    const t = tailorResume(job.postText, job.company);
+    const a = t.analysis;
+    if (a.fit < minFit()) {
+      const reason = `low fit (${a.fit}) for ${a.roleLabel}${a.reasons.length ? `: ${a.reasons.join(', ')}` : ''}`;
+      note({ email, status: 'skipped', reason });
+      console.log(`⏭️ Skipped ${email}: ${reason}`);
+      return false;
+    }
+    subject = t.subject;
+    text = t.body;
+    attachments = [{ filename: name, content: await renderPdf(t.content) }];
+    tailored = { role: a.roleLabel, fit: a.fit, matched: a.matched.slice(0, 6) };
+    role = a.roleLabel;
+  }
+
+  const info = await getTransporter(c).sendMail({
+    from: `"${(c.user || 'me').split('@')[0]}" <${c.user || 'me@localhost'}>`,
+    to: email,
+    subject,
+    text,
+    attachments,
+  });
+  store.recordSend(email, {
+    status: 'sent',
+    subject,
+    role,
+    company: job.company || '',
+    tz: job.tz ?? null,
+    postUrl: job.postUrl || '',
+    messageId: info.messageId,
+  });
+  note({ email, status: c.dryRun ? 'dry-run' : 'success', id: info.messageId, subject, tailored, company: job.company || undefined });
+  console.log(`${c.dryRun ? '🧪 Dry run' : '✔️ Auto-sent'} to ${email}`);
+  return true;
+}
+
+async function sendFollowUp(job, c) {
+  const rec = store.get(job.email);
+  if (!rec || !dueForFollowUp(rec)) return false;
+  if (isBlocked(job.email)) return false;
+
+  const mail = followUpContent(rec, PROFILE.name);
+  const info = await getTransporter(c).sendMail({
+    from: `"${(c.user || 'me').split('@')[0]}" <${c.user || 'me@localhost'}>`,
+    to: job.email,
+    subject: mail.subject,
+    text: mail.text,
+    inReplyTo: rec.messageId, // threads it under the first mail
+    references: rec.messageId,
+  });
+  store.recordSend(job.email, { followUps: (rec.followUps || 0) + 1, lastFollowUpAt: new Date().toISOString() });
+  note({ email: job.email, status: c.dryRun ? 'dry-run' : 'followup', id: info.messageId, subject: mail.subject });
+  console.log(`${c.dryRun ? '🧪 Dry run' : '🔁 Follow-up sent'} to ${job.email}`);
+  return true;
+}
+
 async function work() {
   if (working) return;
   working = true;
   const c = cfg();
+  // a job waits for the recruiter's business hours, but never longer than 3 days
+  const ready = (j) => !c.tzAware || inBusinessHours(j.tz) || Date.now() - j.queuedAt > 72 * HOUR;
+
   while (queue.length) {
-    if (sentToday() >= c.dailyLimit) {
+    if (store.sentToday() >= c.dailyLimit) {
       console.log(`⏸️ Daily limit (${c.dailyLimit}) reached, ${queue.length} mails wait for tomorrow.`);
-      await new Promise((r) => setTimeout(r, 30 * 60 * 1000));
+      await sleep(30 * 60 * 1000);
       continue;
     }
-    const job = queue.shift();
-    queued.delete(job.email);
-    if (sent[job.email]) continue;
-    if (isBlocked(job.email)) {
-      console.log(`⛔ Skipped blocked address ${job.email}`);
+    // first mails go before follow-ups
+    let idx = queue.findIndex((j) => j.type === 'first' && ready(j));
+    if (idx === -1) idx = queue.findIndex((j) => j.type === 'followup' && ready(j));
+    if (idx === -1) {
+      await sleep(10 * 60 * 1000); // everything left is outside business hours
       continue;
     }
+    const job = queue.splice(idx, 1)[0];
+    queued.delete(`${job.type}:${job.email}`);
+
+    let didSend = false;
     try {
-      transporter ||= nodemailer.createTransport({ service: 'gmail', auth: { user: c.user, pass: c.pass } });
-      const name = process.env.RESUME_FILENAME || 'Satyam_Soni_Resume.pdf';
-      const attachments = process.env.RESUME_BASE64
-        ? [{ filename: name, content: Buffer.from(process.env.RESUME_BASE64, 'base64') }]
-        : fs.existsSync(c.resumePath)
-          ? [{ filename: name, path: c.resumePath }]
-          : [];
-      const lead = { email: job.email, query: job.query || '', link: job.postUrl || '' };
-      let subject = personalize(c.subject, lead);
-      let text = personalize(c.body, lead);
-      let tailored = null;
-
-      // With the recruiter's post available, build the resume and note for that role (rules only, no AI)
-      let finalAttachments = attachments;
-      if (job.postText && c.tailor) {
-        const t = tailorResume(job.postText);
-        const a = t.analysis;
-        if (a.fit < minFit()) {
-          history.unshift({
-            email: job.email,
-            status: 'skipped',
-            at: new Date().toISOString(),
-            reason: `low fit (${a.fit}) for ${a.roleLabel}${a.reasons.length ? `: ${a.reasons.join(', ')}` : ''}`,
-          });
-          history.length = Math.min(history.length, 50);
-          console.log(`⏭️ Skipped ${job.email}: low fit ${a.fit} (${a.roleLabel})`);
-          continue;
-        }
-        subject = t.subject;
-        text = t.body;
-        finalAttachments = [{ filename: name, content: await renderPdf(t.content) }];
-        tailored = { role: a.roleLabel, fit: a.fit, matched: a.matched.slice(0, 6) };
-      }
-
-      const info = await transporter.sendMail({
-        from: `"${c.user.split('@')[0]}" <${c.user}>`,
-        to: job.email,
-        subject,
-        text,
-        attachments: finalAttachments,
-      });
-      sent[job.email] = new Date().toISOString();
-      saveSent();
-      history.unshift({ email: job.email, status: 'success', at: sent[job.email], id: info.messageId, tailored });
-      console.log(`✔️ Auto-sent to ${job.email}`);
+      didSend = job.type === 'followup' ? await sendFollowUp(job, c) : await sendFirst(job, c);
     } catch (e) {
-      history.unshift({ email: job.email, status: 'failed', at: new Date().toISOString(), error: e.message });
+      note({ email: job.email, status: 'failed', error: e.message });
       console.error(`❌ Auto-send failed for ${job.email}:`, e.message);
     }
-    history.length = Math.min(history.length, 50);
-    if (queue.length) await new Promise((r) => setTimeout(r, c.minDelay + Math.random() * (c.maxDelay - c.minDelay)));
+    if (didSend && queue.length) await sleep(c.minDelay + Math.random() * (c.maxDelay - c.minDelay));
   }
   working = false;
 }
@@ -134,28 +183,55 @@ export const requireKey = (req, res, next) => {
   next();
 };
 
-// Shared by the extension endpoint and the server-side hunter. Skips invalid, already-sent and already-queued emails.
+// Shared by the extension endpoint and the server-side hunter. Skips invalid, already-mailed and already-queued addresses.
 export function enqueueEmails(emails, query = '', postUrl = '', postText = '') {
   const c = cfg();
   if (!c.enabled) return { accepted: 0, message: 'Auto-send disabled' };
-  if (!c.user || !c.pass) return { error: 'SMTP_USER / SMTP_PASS not set on server' };
+  if (!c.dryRun && (!c.user || !c.pass)) return { error: 'SMTP_USER / SMTP_PASS not set on server' };
 
   let accepted = 0;
   let blocked = 0;
+  const text = String(postText || '').slice(0, 6000);
   for (const raw of Array.isArray(emails) ? emails : [emails]) {
     const email = String(raw).trim().toLowerCase();
-    if (!EMAIL_RE.test(email) || sent[email] || queued.has(email)) continue;
+    if (!EMAIL_RE.test(email) || store.has(email) || queued.has(`first:${email}`)) continue;
     if (isBlocked(email)) {
       blocked++;
       continue;
     }
-    queued.add(email);
-    queue.push({ email, query, postUrl, postText: String(postText || '').slice(0, 6000) });
+    queued.add(`first:${email}`);
+    queue.push({
+      type: 'first',
+      email,
+      query,
+      postUrl,
+      postText: text,
+      company: companyFromPost(text, email),
+      tz: timezoneFromPost(text, email),
+      queuedAt: Date.now(),
+    });
     accepted++;
   }
   work();
   return { accepted, blocked, queueLength: queue.length };
 }
+
+// Called by the scheduler: queue a follow-up for everyone who is due
+export function queueFollowUps() {
+  const c = cfg();
+  if (!c.enabled || !followUpsEnabled()) return 0;
+  let n = 0;
+  for (const rec of store.all()) {
+    if (!dueForFollowUp(rec) || isBlocked(rec.email) || queued.has(`followup:${rec.email}`)) continue;
+    queued.add(`followup:${rec.email}`);
+    queue.push({ type: 'followup', email: rec.email, tz: rec.tz ?? null, queuedAt: Date.now() });
+    n++;
+  }
+  if (n) work();
+  return n;
+}
+
+export const mailerConfig = cfg;
 
 export function registerAutoMailer(app) {
   const auth = requireKey;
@@ -167,11 +243,20 @@ export function registerAutoMailer(app) {
   });
 
   app.get('/api/auto-status', auth, (req, res) => {
+    const c = cfg();
     res.json({
       queueLength: queue.length,
-      sentToday: sentToday(),
-      totalSent: Object.keys(sent).length,
-      dailyLimit: cfg().dailyLimit,
+      queuedFollowUps: queue.filter((j) => j.type === 'followup').length,
+      sentToday: store.sentToday(),
+      dailyLimit: c.dailyLimit,
+      totalContacted: store.stats().contacted,
+      stats: store.stats(),
+      settings: {
+        dryRun: c.dryRun,
+        tzAware: c.tzAware,
+        followUps: followUpsEnabled() ? `${maxFollowUps()} after ${followUpDays()} days` : 'off',
+        minFit: minFit(),
+      },
       recent: history,
     });
   });

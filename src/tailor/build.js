@@ -26,7 +26,8 @@ const relevance = (tags, matched) =>
     return sum + (i === -1 ? 0 : 1 + (matched.length - i) / (matched.length + 1));
   }, 0);
 
-export function buildContent(a) {
+// company: when known the note opens "Dear Acme Team," instead of "Dear Hiring Team,"
+export function buildContent(a, company = '') {
   const matched = a.matched;
   const roleId = a.roleId;
 
@@ -93,7 +94,7 @@ export function buildContent(a) {
   const closing = `My resume is attached, arranged for this role. I am available to join immediately${a.signals.remote ? ' and comfortable working remotely' : ''}, and happy to share more details or take a technical round at your convenience.`;
 
   const body = [
-    'Dear Hiring Team,',
+    company ? `Dear ${company} Team,` : 'Dear Hiring Team,',
     '',
     opening,
     '',

@@ -9,6 +9,8 @@ import { registerSearchRoutes } from './searchKeywords.js';
 import { registerHunter } from './hunter.js';
 import { registerProfile } from './profile.js';
 import { registerTailor } from './tailor/index.js';
+import { startScheduler, runTickNow } from './scheduler.js';
+import { lastReplyCheck, checkReplies } from './replies.js';
 
 // Load environment variables
 dotenv.config();
@@ -187,11 +189,20 @@ registerHunter(app, requireKey);
 registerProfile(app, requireKey);
 registerTailor(app, requireKey);
 
+// Manual triggers for the inbox check and the follow-up pass (the scheduler runs them hourly)
+app.post('/api/replies/check', requireKey, async (req, res) => res.json(await checkReplies()));
+app.post('/api/followups/run', requireKey, async (req, res) => {
+  await runTickNow();
+  res.json({ lastReplyCheck: lastReplyCheck() });
+});
+
 // Start server
 app.listen(PORT, () => {
   console.log(`🚀 Server is running on port ${PORT}`);
   console.log(`👉 Access API at http://localhost:${PORT}`);
 });
+
+startScheduler();
 
 // Render Keep-Alive System (Prevents Free-tier instances from spinning down/sleeping due to inactivity)
 const RENDER_URL = process.env.RENDER_EXTERNAL_URL;
