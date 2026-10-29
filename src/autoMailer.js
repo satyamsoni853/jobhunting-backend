@@ -7,6 +7,7 @@ import { PROFILE, subjectAtCompany } from './profile.js';
 import { tailorResume, renderPdf, minFit } from './tailor/index.js';
 import { store } from './store.js';
 import { getSmtp } from './smtp.js';
+import { dbEnabled } from './db.js';
 import { verifyEmail } from './emailCheck.js';
 import { companyFromPost, personFromEmail, greeting, timezoneFromPost, inBusinessHours } from './company.js';
 import { dueForFollowUp, followUpContent, followUpDays, maxFollowUps, followUpsEnabled } from './followup.js';
@@ -283,6 +284,7 @@ export function registerAutoMailer(app) {
         tzAware: c.tzAware,
         followUps: followUpsEnabled() ? `${maxFollowUps()} after ${followUpDays()} days` : 'off',
         minFit: minFit(),
+        storage: dbEnabled() ? 'database' : 'files',
       },
       recent: history,
     });

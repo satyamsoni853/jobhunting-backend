@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import { dbEnabled, loadContacts, saveContact } from './db.js';
 
 // One record per address we mailed. Old sent.json files (email -> ISO date) are upgraded on load.
 // Note: on Render's free tier the disk is wiped on restart, so follow-up and reply state resets too.
@@ -7,16 +8,34 @@ const DATA_DIR = process.env.DATA_DIR || path.join(process.cwd(), 'data');
 const FILE = path.join(DATA_DIR, 'sent.json');
 
 let records = {};
-try {
-  const raw = JSON.parse(fs.readFileSync(FILE, 'utf8'));
-  for (const [email, v] of Object.entries(raw)) {
-    records[email] = typeof v === 'string' ? { at: v, sends: [v], status: 'sent', followUps: 0 } : v;
-  }
-} catch {
+let useDb = false;
+
+function loadFile() {
   records = {};
+  try {
+    const raw = JSON.parse(fs.readFileSync(FILE, 'utf8'));
+    for (const [email, v] of Object.entries(raw)) {
+      records[email] = typeof v === 'string' ? { at: v, sends: [v], status: 'sent', followUps: 0 } : v;
+    }
+  } catch {
+    records = {};
+  }
+}
+loadFile();
+
+// With a database connected the records come from it, and an old sent.json is carried over once
+export async function initStore() {
+  if (!dbEnabled()) return;
+  const rows = await loadContacts();
+  if (rows.length) {
+    records = Object.fromEntries(rows.map((r) => [r.email, r.data]));
+  } else {
+    for (const [email, rec] of Object.entries(records)) saveContact(email, rec); // first run: migrate the file
+  }
+  useDb = true;
 }
 
-const save = () => {
+const writeFile = () => {
   try {
     fs.mkdirSync(DATA_DIR, { recursive: true });
     fs.writeFileSync(FILE, JSON.stringify(records, null, 2));
@@ -24,6 +43,8 @@ const save = () => {
     console.error('Could not persist sent log:', e.message);
   }
 };
+
+const persist = (email) => (useDb ? saveContact(email, records[email]) : writeFile());
 
 export const store = {
   get: (email) => records[email],
@@ -37,7 +58,7 @@ export const store = {
     r.sends = [...(r.sends || []), now];
     Object.assign(r, patch);
     records[email] = r;
-    save();
+    persist(email);
     return r;
   },
 
@@ -45,7 +66,7 @@ export const store = {
   update(email, patch) {
     if (!records[email]) records[email] = { at: new Date().toISOString(), sends: [], status: 'sent', followUps: 0 };
     Object.assign(records[email], patch);
-    save();
+    persist(email);
   },
 
   // Counts every mail sent today (first mails and follow-ups), used for the daily limit

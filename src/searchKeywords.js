@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import { dbEnabled, getKv, setKv } from './db.js';
 
 // LinkedIn search queries per job category. The website lets the user multiselect categories,
 // the extension then searches every query of the selected categories.
@@ -180,7 +181,16 @@ Object.assign(JOB_CATEGORIES, {
 const DATA_DIR = process.env.DATA_DIR || path.join(process.cwd(), 'data');
 const SELECTION_FILE = path.join(DATA_DIR, 'search-selection.json');
 
+let dbSelection = []; // used instead of the file when a database is connected
+
+export async function initSelection() {
+  if (!dbEnabled()) return;
+  const v = await getKv('selection');
+  dbSelection = v ? JSON.parse(v) : [];
+}
+
 export function loadSelection() {
+  if (dbEnabled()) return dbSelection.filter((k) => JOB_CATEGORIES[k]);
   try {
     const parsed = JSON.parse(fs.readFileSync(SELECTION_FILE, 'utf8'));
     return parsed.filter((k) => JOB_CATEGORIES[k]);
@@ -191,6 +201,11 @@ export function loadSelection() {
 
 export function saveSelection(categories) {
   const valid = [...new Set(categories)].filter((k) => JOB_CATEGORIES[k]);
+  if (dbEnabled()) {
+    dbSelection = valid;
+    setKv('selection', JSON.stringify(valid));
+    return valid;
+  }
   fs.mkdirSync(DATA_DIR, { recursive: true });
   fs.writeFileSync(SELECTION_FILE, JSON.stringify(valid));
   return valid;

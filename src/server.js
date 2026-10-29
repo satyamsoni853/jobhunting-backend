@@ -12,7 +12,10 @@ import { registerOtp, requireProfileToken } from './otp.js';
 import { registerTailor } from './tailor/index.js';
 import { startScheduler, runTickNow } from './scheduler.js';
 import { registerJobs } from './jobs.js';
-import { registerSmtp } from './smtp.js';
+import { registerSmtp, initSmtp } from './smtp.js';
+import { initDb } from './db.js';
+import { initStore } from './store.js';
+import { initSelection } from './searchKeywords.js';
 import { lastReplyCheck, checkReplies } from './replies.js';
 
 // Load environment variables
@@ -202,7 +205,17 @@ app.post('/api/followups/run', requireKey, async (req, res) => {
   res.json({ lastReplyCheck: lastReplyCheck() });
 });
 
-// Start server
+// Start server. A reachable database is loaded first; if it is not, the server still starts and uses files.
+try {
+  if (await initDb()) {
+    await initStore();
+    await initSmtp();
+    await initSelection();
+  }
+} catch (e) {
+  console.error('Database unavailable, using files instead:', e.message);
+}
+
 app.listen(PORT, () => {
   console.log(`🚀 Server is running on port ${PORT}`);
   console.log(`👉 Access API at http://localhost:${PORT}`);

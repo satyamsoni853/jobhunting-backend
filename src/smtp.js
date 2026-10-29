@@ -3,6 +3,7 @@ import path from 'path';
 import crypto from 'crypto';
 import nodemailer from 'nodemailer';
 import { PROFILE } from './profile.js';
+import { dbEnabled, getKv, setKv, delKv } from './db.js';
 
 // The sender Gmail login. It is set from the website (no SMTP values in the host's env), kept in memory and also
 // written encrypted to disk so it survives a restart when the disk persists. On Render's free tier the disk is wiped
@@ -12,6 +13,21 @@ const DATA_DIR = process.env.DATA_DIR || path.join(process.cwd(), 'data');
 const FILE = path.join(DATA_DIR, 'smtp.enc');
 
 let current = null; // { user, pass }
+
+// With a database connected the encrypted login is kept there instead of on disk (the disk is wiped on restart)
+export async function initSmtp() {
+  if (!dbEnabled()) return;
+  const blob = await getKv('smtp');
+  if (blob) {
+    try {
+      current = decrypt(blob);
+    } catch {
+      current = null; // AUTO_API_KEY changed: the stored login cannot be read any more
+    }
+  } else if (current) {
+    setKv('smtp', encrypt(current)); // first run: carry over a login saved in the file
+  }
+}
 
 // Encrypted with a key derived from AUTO_API_KEY: without that key the file is useless
 const keyFor = () => crypto.scryptSync((process.env.AUTO_API_KEY || '').trim() || 'no-key', 'jobhunting-smtp', 32);
@@ -45,6 +61,7 @@ export function getSmtp() {
 
 export function setSmtp(user, pass) {
   current = { user: user.trim().toLowerCase(), pass: pass.replace(/\s+/g, '') }; // Google shows app passwords with spaces
+  if (dbEnabled()) return setKv('smtp', encrypt(current));
   try {
     fs.mkdirSync(DATA_DIR, { recursive: true });
     fs.writeFileSync(FILE, encrypt(current));
@@ -55,6 +72,7 @@ export function setSmtp(user, pass) {
 
 export function clearSmtp() {
   current = null;
+  if (dbEnabled()) delKv('smtp');
   try {
     fs.rmSync(FILE, { force: true });
   } catch {
