@@ -14,7 +14,7 @@ const FILE = path.join(DATA_DIR, 'smtp.enc');
 let current = null; // { user, pass }
 
 // Encrypted with a key derived from AUTO_API_KEY: without that key the file is useless
-const keyFor = () => crypto.scryptSync(process.env.AUTO_API_KEY || 'no-key', 'jobhunting-smtp', 32);
+const keyFor = () => crypto.scryptSync((process.env.AUTO_API_KEY || '').trim() || 'no-key', 'jobhunting-smtp', 32);
 
 export function encrypt(obj, key = keyFor()) {
   const iv = crypto.randomBytes(12);

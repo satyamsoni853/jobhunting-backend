@@ -1,4 +1,5 @@
 import fs from 'fs';
+import crypto from 'crypto';
 import path from 'path';
 import nodemailer from 'nodemailer';
 import { isBlocked, isBlockedAuthor, mentionsGroup } from './blocklist.js';
@@ -19,7 +20,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const cfg = () => ({
   user: getSmtp().user, // set from the website, env is the fallback
   pass: getSmtp().pass,
-  apiKey: process.env.AUTO_API_KEY,
+  apiKey: (process.env.AUTO_API_KEY || '').trim(), // a space or newline pasted after the key must not break the login
   enabled: process.env.AUTO_SEND_ENABLED !== 'false',
   dryRun: process.env.MAIL_DRY_RUN === 'true', // build the mails and log them, send nothing
   subject: process.env.AUTO_SUBJECT || PROFILE.subject,
@@ -191,7 +192,10 @@ async function work() {
 
 export const requireKey = (req, res, next) => {
   const c = cfg();
-  if (!c.apiKey || req.get('X-API-Key') !== c.apiKey) return res.status(401).json({ error: 'Unauthorized' });
+  const sent = (req.get('X-API-Key') || '').trim();
+  const a = Buffer.from(sent);
+  const b = Buffer.from(c.apiKey);
+  if (!c.apiKey || a.length !== b.length || !crypto.timingSafeEqual(a, b)) return res.status(401).json({ error: 'Unauthorized' });
   next();
 };
 
