@@ -5,7 +5,7 @@ import path from 'path';
 // and served to the website, so both always send the same text. AUTO_SUBJECT / AUTO_BODY env can override it.
 export const PROFILE = {
   name: 'Satyam Soni',
-  email: 'Satyamsoni853@gmail.com',
+  email: 'satyam.soni1312@gmail.com',
   subject: 'Application for Full Stack Developer (Java, Python, React) - Satyam Soni',
   body: [
     'Dear Hiring Team,',

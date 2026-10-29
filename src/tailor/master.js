@@ -5,7 +5,7 @@ export const MASTER = {
   name: 'Satyam Soni',
   location: 'Gurugram, India',
   phone: '+91 9696050128',
-  email: 'Satyamsoni853@gmail.com',
+  email: 'satyam.soni1312@gmail.com',
   linkedin: 'linkedin.com/in/satyam-soni-833873293',
   github: 'github.com/satyamsoni853',
 

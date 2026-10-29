@@ -24,7 +24,7 @@ const GROUP_DOMAINS = [
   'advancedcardiology.ca',
 ];
 
-const GROUP_EMAILS = ['satya.soni@kapoorwealth.com'];
+const GROUP_EMAILS = ['satya.soni@kapoorwealth.com', 'satyam.soni1312@gmail.com', 'satyamsoni853@gmail.com'];
 
 // Company and owner names. A hiring post that mentions one of these is skipped by the hunter.
 export const GROUP_NAME_RE =
