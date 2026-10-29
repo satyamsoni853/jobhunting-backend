@@ -30,12 +30,19 @@ export const subjectAtCompany = (subject, company) =>
   company ? subject.replace(/^(Application for [^(]*?)( \(| - )/, `$1 at ${company}$2`) : subject;
 
 // Same lookup the mailer uses: base64 from env (public repos), else a local file
-export function loadResume() {
+// Order: RESUME_BASE64 env (an exact copy of the user's own PDF), then a resume file, then one built by the server
+// from the master resume data (no setup needed, same one-page ATS layout as the tailored resumes).
+let generated = null;
+export async function loadResume() {
   const filename = process.env.RESUME_FILENAME || 'Satyam_Soni_Resume.pdf';
-  if (process.env.RESUME_BASE64) return { filename, buffer: Buffer.from(process.env.RESUME_BASE64, 'base64') };
+  if (process.env.RESUME_BASE64) return { filename, buffer: Buffer.from(process.env.RESUME_BASE64.trim(), 'base64') };
   const file = process.env.RESUME_PATH || path.join(process.cwd(), 'resume', 'resume.pdf');
   if (fs.existsSync(file)) return { filename, buffer: fs.readFileSync(file) };
-  return null;
+  if (!generated) {
+    const { tailorResume, renderPdf } = await import('./tailor/index.js');
+    generated = await renderPdf(tailorResume('').content); // an empty post gives the default full stack layout
+  }
+  return { filename, buffer: generated };
 }
 
 export function registerProfile(app, guard) {
@@ -46,8 +53,8 @@ export function registerProfile(app, guard) {
     res.json({ name: PROFILE.name, email: PROFILE.email, subject, body });
   });
 
-  app.get('/api/profile/satyam/resume', guard, (req, res) => {
-    const resume = loadResume();
+  app.get('/api/profile/satyam/resume', guard, async (req, res) => {
+    const resume = await loadResume();
     if (!resume) return res.status(404).json({ error: 'Resume not configured on the server' });
     res.set('Content-Type', 'application/pdf');
     res.set('Content-Disposition', `attachment; filename="${resume.filename}"`);

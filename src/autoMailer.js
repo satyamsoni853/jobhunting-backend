@@ -3,7 +3,7 @@ import crypto from 'crypto';
 import path from 'path';
 import nodemailer from 'nodemailer';
 import { isBlocked, isBlockedAuthor, mentionsGroup } from './blocklist.js';
-import { PROFILE, subjectAtCompany } from './profile.js';
+import { PROFILE, subjectAtCompany, loadResume } from './profile.js';
 import { tailorResume, renderPdf, minFit } from './tailor/index.js';
 import { store } from './store.js';
 import { getSmtp } from './smtp.js';
@@ -62,11 +62,9 @@ function personalize(text, lead) {
   return text.replace(/\{\{\s*(\w+)\s*\}\}/g, (_, k) => lead[k.toLowerCase()] ?? '');
 }
 
-const resumeAttachment = (c) => {
-  const name = process.env.RESUME_FILENAME || 'Satyam_Soni_Resume.pdf';
-  if (process.env.RESUME_BASE64) return [{ filename: name, content: Buffer.from(process.env.RESUME_BASE64, 'base64') }];
-  if (fs.existsSync(c.resumePath)) return [{ filename: name, path: c.resumePath }];
-  return [];
+const resumeAttachment = async () => {
+  const r = await loadResume();
+  return r ? [{ filename: r.filename, content: r.buffer }] : [];
 };
 
 // Returns true when a mail was really sent, so the worker knows whether to wait before the next one
@@ -90,7 +88,7 @@ async function sendFirst(job, c) {
   const name = process.env.RESUME_FILENAME || 'Satyam_Soni_Resume.pdf';
   let subject = personalize(job.override?.subject || c.subject, lead);
   let text = personalize(job.override?.body || c.body, lead);
-  let attachments = resumeAttachment(c);
+  let attachments = await resumeAttachment();
   let tailored = null;
   let role = '';
   const who = { company: job.company, person: job.person };
