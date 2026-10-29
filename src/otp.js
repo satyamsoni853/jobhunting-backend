@@ -51,7 +51,12 @@ export function registerOtp(app) {
       );
     } catch (e) {
       console.error('OTP mail failed:', e.message);
-      return res.status(503).json({ error: 'Could not send the code. The sender Gmail is not connected on the server.' });
+      const notConnected = /not connected/i.test(e.message);
+      return res.status(503).json({
+        error: notConnected
+          ? 'The code mail cannot be sent yet: the sender Gmail is not connected on the server. The owner must enter the Access Key in Auto Hunter (Step 2), then connect Gmail in the Sender Gmail card.'
+          : 'Gmail did not accept the code mail. Reconnect the sender Gmail with a fresh App Password in the Sender Gmail card.',
+      });
     }
     pending = { hash: hash(code, salt), salt, expires: now + CODE_TTL, attempts: 0 };
     lastSent = now;
