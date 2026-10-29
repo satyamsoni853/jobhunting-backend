@@ -7,7 +7,7 @@ import { PROFILE, subjectAtCompany, loadResume } from './profile.js';
 import { tailorResume, renderPdf, minFit } from './tailor/index.js';
 import { store } from './store.js';
 import { getSmtp } from './smtp.js';
-import { dbEnabled, getKv, setKv } from './db.js';
+import { dbEnabled, getKv, setKv, loadLeads, saveLead } from './db.js';
 import { gmailApiConfigured, gmailApiTransport } from './gmailApi.js';
 import { verifyEmail } from './emailCheck.js';
 import { companyFromPost, personFromEmail, greeting, timezoneFromPost, inBusinessHours } from './company.js';
@@ -44,6 +44,20 @@ const persistQueue = () => {
   if (dbEnabled()) setKv('queue', JSON.stringify(queue));
 };
 
+// Every address ever found stays in the database for good: when it was first seen, where from, and what happened to it.
+// (Without a database it lives in memory only, and is lost on a restart.)
+const leads = new Map();
+function track(email, patch = {}) {
+  const now = new Date().toISOString();
+  const old = leads.get(email);
+  const rec = old ? { ...old, ...patch, seen: (old.seen || 1) + (patch.firstTime ? 0 : 1), lastSeen: now } : { firstSeen: now, seen: 1, lastSeen: now, ...patch };
+  delete rec.firstTime;
+  leads.set(email, rec);
+  if (dbEnabled()) saveLead(email, rec);
+}
+// a status change on an address already known (no "seen again" count)
+const mark = (email, patch) => track(email, { ...patch, firstTime: true });
+
 // Addresses the owner cancelled on the website: never queued again, even if a post shows them once more
 const cancelled = new Set();
 const persistCancelled = () => {
@@ -53,6 +67,9 @@ const persistCancelled = () => {
 export async function initQueue() {
   if (!dbEnabled()) return 0;
   try {
+    for (const r of await loadLeads()) leads.set(r.email, r.data);
+    // addresses mailed before the leads book existed are added to it once
+    for (const r of store.all()) if (!leads.has(r.email) && (r.sends || []).length) track(r.email, { status: 'sent', firstSeen: r.at, sentAt: r.sends.at(-1), subject: r.subject, role: r.role, company: r.company, postUrl: r.postUrl, firstTime: true });
     for (const e of JSON.parse((await getKv('cancelled')) || '[]')) cancelled.add(e);
     history.push(...JSON.parse((await getKv('history')) || '[]'));
   } catch {
@@ -138,6 +155,7 @@ async function sendFirst(job, c) {
   const check = await verifyEmail(email);
   if (!check.ok) {
     store.update(email, { status: 'invalid', reason: check.reason });
+    mark(email, { status: 'skipped', reason: check.reason });
     note({ email, status: 'skipped', reason: check.reason });
     console.log(`🚫 Skipped ${email}: ${check.reason}`);
     return false;
@@ -160,6 +178,7 @@ async function sendFirst(job, c) {
     const a = t.analysis;
     if (a.fit < minFit()) {
       const reason = `low fit (${a.fit}) for ${a.roleLabel}${a.reasons.length ? `: ${a.reasons.join(', ')}` : ''}`;
+      mark(email, { status: 'skipped', reason });
       note({ email, status: 'skipped', reason });
       console.log(`⏭️ Skipped ${email}: ${reason}`);
       return false;
@@ -189,6 +208,7 @@ async function sendFirst(job, c) {
     messageId: info.messageId,
     threadId: info.threadId || '',
   });
+  mark(email, { status: 'sent', sentAt: new Date().toISOString(), subject, role, company: job.company || '' });
   note({ email, status: c.dryRun ? 'dry-run' : 'success', id: info.messageId, subject, tailored, company: job.company || undefined, person: job.person || undefined });
   console.log(`${c.dryRun ? '🧪 Dry run' : '✔️ Auto-sent'} to ${email}`);
   return true;
@@ -274,8 +294,13 @@ export function enqueueEmails(emails, query = '', postUrl = '', postText = '', a
   if (isBlockedAuthor(author)) return { accepted: 0, blocked: (Array.isArray(emails) ? emails : [emails]).length, queueLength: queue.length, reason: 'blocked author' };
   for (const raw of Array.isArray(emails) ? emails : [emails]) {
     const email = String(raw).trim().toLowerCase();
-    if (!EMAIL_RE.test(email) || store.has(email) || queued.has(`first:${email}`)) continue;
+    if (!EMAIL_RE.test(email)) continue;
+    if (store.has(email) || queued.has(`first:${email}`)) {
+      track(email); // seen again: already mailed or already waiting, so nothing more is sent
+      continue;
+    }
     if (isBlocked(email) || cancelled.has(email)) {
+      track(email, { status: cancelled.has(email) ? 'cancelled' : 'blocked', query, postUrl });
       blocked++;
       continue;
     }
@@ -285,20 +310,24 @@ export function enqueueEmails(emails, query = '', postUrl = '', postText = '', a
     if (text && c.tailor) {
       const a = tailorResume(text, {}).analysis;
       if (a.fit < minFit()) {
-        note({ email, status: 'skipped', reason: `low fit (${a.fit}) for ${a.roleLabel}${a.reasons.length ? `: ${a.reasons.join(', ')}` : ''}`, query, postUrl });
+        const reason = `low fit (${a.fit}) for ${a.roleLabel}${a.reasons.length ? `: ${a.reasons.join(', ')}` : ''}`;
+        note({ email, status: 'skipped', reason, query, postUrl });
+        track(email, { status: 'skipped', reason, query, postUrl, role: a.roleLabel, fit: a.fit });
         continue;
       }
       fit = a.fit;
       role = a.roleLabel;
     }
     queued.add(`first:${email}`);
+    const company = companyFromPost(text, email);
+    track(email, { status: 'queued', query, postUrl, company, role, fit });
     queue.push({
       type: 'first',
       email,
       query,
       postUrl,
       postText: text,
-      company: companyFromPost(text, email),
+      company,
       override, // { subject, body } typed by the owner for this batch
       fit,
       role,
@@ -392,7 +421,19 @@ export function registerAutoMailer(app) {
         .slice(0, 200),
       skipped: history.filter((h) => h.status === 'skipped' || h.status === 'failed').slice(0, 100),
       cancelledCount: cancelled.size,
+      leadsTotal: leads.size,
     });
+  });
+
+  // Every address ever found, as a CSV for download (the website fetches it with the key)
+  app.get('/api/mail/leads.csv', auth, (req, res) => {
+    const q = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+    const rows = [...leads.entries()].sort((a, b) => String(b[1].lastSeen).localeCompare(String(a[1].lastSeen)));
+    const csv = [
+      'email,status,first_seen,last_seen,times_seen,company,role,fit,keyword,post_url,reason',
+      ...rows.map(([e, r]) => [e, r.status || '', r.firstSeen, r.lastSeen, r.seen, r.company, r.role, r.fit, r.query, r.postUrl, r.reason].map(q).join(',')),
+    ].join('\n');
+    res.set({ 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': 'attachment; filename="all-emails.csv"' }).send(csv);
   });
 
   // Take mails out of the waiting list. { emails: [...] } or { all: true }
@@ -406,7 +447,10 @@ export function registerAutoMailer(app) {
       if (!all && !pick.has(j.email)) continue;
       queue.splice(i, 1);
       queued.delete(`${j.type}:${j.email}`);
-      if (j.type === 'first') cancelled.add(j.email);
+      if (j.type === 'first') {
+        cancelled.add(j.email);
+        mark(j.email, { status: 'cancelled' });
+      }
       note({ email: j.email, status: 'skipped', reason: 'cancelled by you' });
       n++;
     }

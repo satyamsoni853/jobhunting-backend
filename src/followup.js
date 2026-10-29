@@ -3,7 +3,9 @@ import { greeting } from './company.js';
 // Follow-up mails: one polite reminder a few days after the first mail, only to people who have not replied.
 
 export const followUpsEnabled = () => process.env.FOLLOWUP_ENABLED !== 'false';
-export const followUpDays = () => Number(process.env.FOLLOWUP_DAYS || 6);
+// Nobody gets a second mail within a week of the last one, whatever FOLLOWUP_DAYS says
+export const MIN_GAP_DAYS = 7;
+export const followUpDays = () => Math.max(MIN_GAP_DAYS, Number(process.env.FOLLOWUP_DAYS || MIN_GAP_DAYS)); 
 export const maxFollowUps = () => Number(process.env.MAX_FOLLOWUPS ?? 1);
 
 const DAY = 24 * 3600 * 1000;

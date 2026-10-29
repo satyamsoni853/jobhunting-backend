@@ -24,6 +24,9 @@ export async function initDb(injected) {
   await pool.query(
     'create table if not exists contacts (email text primary key, data jsonb not null, updated_at timestamptz not null default now())'
   );
+  await pool.query(
+    'create table if not exists leads (email text primary key, data jsonb not null, updated_at timestamptz not null default now())'
+  );
   await pool.query('create table if not exists kv (key text primary key, value text not null, updated_at timestamptz not null default now())');
   console.log('🗄️ Database connected, data is kept across restarts');
   return true;
@@ -42,6 +45,17 @@ export function saveContact(email, data) {
       [email, JSON.stringify(data)]
     )
     .catch(logErr('save contact'));
+}
+
+// ---- every address ever found, whatever happened to it (queued, mailed, skipped, cancelled) ----
+export async function loadLeads() {
+  return (await pool.query('select email, data from leads')).rows;
+}
+
+export function saveLead(email, data) {
+  pool
+    .query('insert into leads (email, data) values ($1, $2) on conflict (email) do update set data = excluded.data, updated_at = now()', [email, JSON.stringify(data)])
+    .catch(logErr('save lead'));
 }
 
 // ---- small settings (encrypted SMTP login, chosen job categories) ----
