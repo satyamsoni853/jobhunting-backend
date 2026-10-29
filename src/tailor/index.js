@@ -1,6 +1,7 @@
 import { analyzePost } from './analyze.js';
 import { buildContent } from './build.js';
 import { renderPdf } from './pdf.js';
+import { SKILL_BY_ID } from './kb.js';
 
 // Posts that fit worse than this are not mailed. Set MIN_FIT=0 to mail everything.
 export const minFit = () => (process.env.MIN_FIT !== undefined ? Number(process.env.MIN_FIT) : 0.45);
@@ -26,7 +27,7 @@ export function registerTailor(app, auth) {
       fit: a.fit,
       wouldSend: a.fit >= minFit(),
       minFit: minFit(),
-      matchedSkills: a.matched,
+      matchedSkills: a.matched.map((id) => SKILL_BY_ID[id].name),
       gaps: a.gaps,
       yearsRequired: a.yearsRequired,
       reasons: a.reasons,
