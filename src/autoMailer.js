@@ -311,7 +311,8 @@ export function enqueueEmails(emails, query = '', postUrl = '', postText = '', a
       const a = tailorResume(text, {}).analysis;
       if (a.fit < minFit()) {
         const reason = `low fit (${a.fit}) for ${a.roleLabel}${a.reasons.length ? `: ${a.reasons.join(', ')}` : ''}`;
-        note({ email, status: 'skipped', reason, query, postUrl });
+        const prev = leads.get(email);
+        if (!(prev && prev.status === 'skipped' && prev.fit === a.fit)) note({ email, status: 'skipped', reason, query, postUrl }); // not again on every hunt
         track(email, { status: 'skipped', reason, query, postUrl, role: a.roleLabel, fit: a.fit });
         continue;
       }
