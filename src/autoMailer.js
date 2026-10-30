@@ -386,6 +386,60 @@ export function registerAutoMailer(app) {
     res.status(result.error ? 500 : 200).json(result);
   });
 
+  // Counts only, no addresses and no names: lets the owner (or Claude) check how the hunt is doing without the Access Key.
+  // Shows how the LinkedIn agent, Hacker News and the rest are doing, and why leads were skipped.
+  app.get('/api/mail/counts', (req, res) => {
+    const c = cfg();
+    const since = Date.now() - 24 * 60 * 60 * 1000;
+    const recent = (t) => Boolean(t) && new Date(t).getTime() >= since;
+    const sourceOf = (l) => (/linkedin\.com/i.test(l.postUrl || '') ? 'linkedin' : /^HN\b/i.test(l.query || '') ? 'hackernews' : 'other');
+    const WHY = [
+      ['role not a match', /not a match/],
+      ['senior or lead level', /senior or lead/],
+      ['asks more years', /asks \d+\+ years/],
+      ['region locked', /region that does not include/],
+      ['on-site only', /on-site or hybrid/],
+      ['no matching skills', /no matching skills/],
+      ['work authorization', /work authorization/],
+    ];
+    const sources = {};
+    const skipReasons = { linkedin: {}, all: {} };
+    let nearMiss = 0;
+    let lastLinkedInLeadAt = '';
+    for (const l of leads.values()) {
+      const src = sourceOf(l);
+      const s = (sources[src] ||= { leads: 0, new24h: 0, queued: 0, sent: 0, skipped: 0, blocked: 0, cancelled: 0, failed: 0 });
+      s.leads++;
+      if (recent(l.firstSeen)) s.new24h++;
+      if (l.status in s) s[l.status]++;
+      if (src === 'linkedin' && String(l.lastSeen || '') > lastLinkedInLeadAt) lastLinkedInLeadAt = l.lastSeen;
+      if (l.status === 'skipped') {
+        const r = String(l.reason || '');
+        const hits = WHY.filter(([, re]) => re.test(r)).map(([label]) => label);
+        for (const label of hits.length ? hits : ['other']) {
+          skipReasons.all[label] = (skipReasons.all[label] || 0) + 1;
+          if (src === 'linkedin') skipReasons.linkedin[label] = (skipReasons.linkedin[label] || 0) + 1;
+        }
+        if (typeof l.fit === 'number' && l.fit >= 0.35 && l.fit < minFit()) nearMiss++;
+      }
+    }
+    res.json({
+      updatedAt: new Date().toISOString(),
+      queueLength: queue.length,
+      waitingForOfficeHours: queue.filter((j) => !(j.force || !c.tzAware || inBusinessHours(j.tz))).length,
+      sentToday: store.sentToday(),
+      dailyLimit: c.dailyLimit,
+      sentTotal: store.all().filter((r) => (r.sends || []).length > 0).length,
+      leadsTotal: leads.size,
+      minFit: minFit(),
+      tzAware: c.tzAware,
+      sources,
+      skipReasons,
+      skippedJustBelowLimit: nearMiss,
+      lastLinkedInLeadAt,
+    });
+  });
+
   // Everything the website's mail list shows: waiting, sent, skipped and failed
   app.get('/api/mail/overview', auth, (req, res) => {
     const c = cfg();
