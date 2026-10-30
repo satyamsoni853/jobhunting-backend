@@ -13,6 +13,7 @@ const ROLE_DEFAULTS = {
   node: ['nodejs', 'express', 'nestjs', 'mongodb'],
   mern: ['mongodb', 'express', 'react', 'nodejs'],
   angular: ['angular', 'typescript', 'javascript', 'react'],
+  mobile: ['reactnative', 'expo', 'android', 'firebase'],
   default: ['react', 'nextjs', 'java', 'python'],
 };
 

@@ -76,7 +76,7 @@ export const SKILLS = [
   S('oracle', 'Oracle SQL', 'Databases', /\boracle\b|pl\/?sql/i, true, ['sql']),
   S('sql', 'SQL', 'Databases', /\bsql\b|\brdbms\b|relational databases?/i, true),
   S('redis', 'Redis', 'Databases', /\bredis\b|memcached/i),
-  S('nosql', 'NoSQL', 'Databases', /\bnosql\b|dynamodb|cassandra|couchbase|firebase|firestore/i),
+  S('nosql', 'NoSQL', 'Databases', /\bnosql\b|dynamodb|cassandra|couchbase/i),
   S('elasticsearch', 'Elasticsearch', 'Databases', /elastic\s?search|\bopensearch\b|\bsolr\b/i),
   S('snowflake', 'Snowflake / Data Warehouse', 'Databases', /snowflake|bigquery|redshift|data warehouse/i),
 
@@ -97,7 +97,9 @@ export const SKILLS = [
   // ---- Mobile ----
   S('reactnative', 'React Native', 'Mobile', /react[- ]native/i, true, ['react', 'javascript']),
   S('flutter', 'Flutter', 'Mobile', /\bflutter\b|\bdart\b/i),
-  S('android', 'Android', 'Mobile', /\bandroid\b/i),
+  S('android', 'Android', 'Mobile', /\bandroid\b/i, true),
+  S('firebase', 'Firebase', 'Mobile', /\bfirebase\b|firestore/i, true),
+  S('expo', 'Expo', 'Mobile', /\bexpo\b/i, true, ['reactnative']),
   S('ios', 'iOS', 'Mobile', /\bios\b|swiftui|\bswift\b(?=\s*(?:developer|programming|language|\/|,))|objective[- ]c/i),
 
   // ---- Data / AI (not on the resume) ----
@@ -132,7 +134,7 @@ export const ROLES = [
   { id: 'intern', label: 'Software Developer', fit: 0.9, title: /\bintern(?:ship)?\b|fresher|entry[- ]level|graduate|trainee/i, body: /\bintern(?:ship)?\b|fresher|entry[- ]level|trainee/i, skills: ['javascript'] },
   { id: 'php', label: 'PHP Developer', fit: 0.2, title: /\bphp\b|laravel/i, body: /\bphp\b|laravel/i, skills: ['php'] },
   { id: 'dotnet', label: '.NET Developer', fit: 0, title: /\.net\b|c#/i, body: /\.net\b|\bc#/i, skills: ['dotnet'] },
-  { id: 'mobile', label: 'Mobile Developer', fit: 0.1, title: /android|\bios\b|flutter|react[- ]native|mobile app/i, body: /android|\bios\b|flutter|react[- ]native/i, skills: ['reactnative'] },
+  { id: 'mobile', label: 'Mobile Developer', fit: 0.8, title: /android|\bios\b|flutter|react[- ]native|mobile app/i, body: /android|\bios\b|flutter|react[- ]native/i, skills: ['reactnative', 'android'] },
   { id: 'devops', label: 'DevOps Engineer', fit: 0, title: /devops|\bsre\b|site reliability|platform engineer|cloud engineer|infrastructure/i, body: /devops|\bsre\b|kubernetes|terraform/i, skills: ['kubernetes', 'aws'] },
   { id: 'data', label: 'Data / ML Engineer', fit: 0, title: /data\s+(?:scien|analy|engineer)|machine learning|\bml\b|\bai\s+engineer|\bllm\b/i, body: /machine learning|data scien/i, skills: ['ml', 'datasci'] },
   { id: 'qa', label: 'QA Engineer', fit: 0, title: /\bqa\b|\bsdet\b|test(?:er|ing)\s+engineer|quality assurance/i, body: /\bqa\b|quality assurance/i, skills: ['testing'] },

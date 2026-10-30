@@ -34,6 +34,8 @@ export const MASTER = {
       'Full Stack Developer available for project-based and contract work. Has delivered a travel booking website end to end as a remote, project-based developer, using React.js and Next.js on the frontend and REST APIs and databases on the backend. Available immediately.',
     intern:
       'Computer Science graduate (B.Tech, 2025) and Full Stack Developer with hands-on experience in React.js, Next.js, Spring Boot, FastAPI and Express.js, gained in a startup and a remote project role. Available immediately.',
+    mobile:
+      'Mobile App Developer who builds cross-platform iOS and Android apps with React Native and Expo, and works with Android Studio and Firebase. Backed by React.js and Next.js on the web and REST APIs with Node.js, Spring Boot and FastAPI on the backend. Available immediately.',
     webdev:
       'Software Developer with experience building web applications end to end using React.js and Next.js on the frontend and Spring Boot, FastAPI and Express.js on the backend. Strong knowledge of REST APIs, SQL databases and clean architecture. Available immediately.',
   },
@@ -45,7 +47,7 @@ export const MASTER = {
     { group: 'Databases', ids: ['mysql', 'postgres', 'mongodb', 'oracle', 'sql'] },
     { group: 'Tools and DevOps', ids: ['git', 'docker', 'linux', 'postman', 'figma', 'websockets'] },
     { group: 'UI Libraries', ids: ['mui', 'shadcn', 'chakra', 'daisyui'] },
-    { group: 'Mobile and Data', ids: ['reactnative', 'pandas', 'numpy'] },
+    { group: 'Mobile and Data', ids: ['reactnative', 'expo', 'android', 'firebase', 'pandas', 'numpy'] },
   ],
 
   experience: [
