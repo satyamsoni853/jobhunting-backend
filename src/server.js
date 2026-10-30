@@ -11,7 +11,7 @@ import { registerProfile } from './profile.js';
 import { registerOtp, requireProfileToken } from './otp.js';
 import { registerSatyamSend } from './satyamSend.js';
 import { checkGmailApi } from './gmailApi.js';
-import { registerGoogleAuth, initGoogle } from './googleAuth.js';
+import { registerGoogleAuth, initGoogle, googleConnectedAt } from './googleAuth.js';
 import { registerTailor } from './tailor/index.js';
 import { startScheduler, runTickNow } from './scheduler.js';
 import { registerJobs } from './jobs.js';
@@ -203,7 +203,7 @@ registerSatyamSend(app, requireProfileToken);
 registerGoogleAuth(app, requireKey);
 
 // Key protected: tests the Gmail API login without sending a mail
-app.get('/api/mail/check', requireKey, async (req, res) => res.json(await checkGmailApi()));
+app.get('/api/mail/check', requireKey, async (req, res) => res.json({ ...(await checkGmailApi()), connectedAt: googleConnectedAt() }));
 registerTailor(app, requireKey);
 registerJobs(app);
 registerSmtp(app, requireKey);

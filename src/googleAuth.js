@@ -20,6 +20,10 @@ const states = new Map(); // state -> expires (one use, 10 minutes)
 const clean = (v) => (v || '').replace(/\s+/g, '');
 export const storedRefreshToken = () => stored;
 
+// set when the sign-in finishes, so the website can tell that the new tab completed the connection
+let connectedAt = 0;
+export const googleConnectedAt = () => connectedAt;
+
 const redirectUri = () => `${(process.env.RENDER_EXTERNAL_URL || `http://localhost:${process.env.PORT || 5000}`).replace(/\/$/, '')}/api/google/callback`;
 
 function persist() {
@@ -95,6 +99,7 @@ export function registerGoogleAuth(app, auth) {
         return res.status(400).send(page(false, `Google did not give a token (${j.error_description || j.error || r.status}). Press Connect again.`));
       }
       stored = j.refresh_token;
+      connectedAt = Date.now();
       persist();
       res.send(page(true, 'This tab closes by itself. Go back to the website and press "Test connection" there.'));
     } catch (e) {
