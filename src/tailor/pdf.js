@@ -6,8 +6,9 @@ const MARGIN = { top: 34, bottom: 30, left: 40, right: 40 };
 const REG = 'Helvetica';
 const BOLD = 'Helvetica-Bold';
 const ITAL = 'Helvetica-Oblique';
+const BLUE = '#1F4E9E';
 
-function draw(content, fs, cap) {
+function draw(content, fs, cap, projCap) {
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({
       size: 'A4',
@@ -30,9 +31,10 @@ function draw(content, fs, cap) {
     const text = (str, font, size, opts = {}) => doc.font(font).fontSize(size).text(str, L, doc.y, { width: W, lineGap, ...opts });
     const heading = (str) => {
       doc.moveDown(0.5);
-      doc.font(BOLD).fontSize(fs + 0.5).text(str.toUpperCase(), L, doc.y, { width: W, characterSpacing: 0.6 });
+      doc.fillColor(BLUE).font(BOLD).fontSize(fs + 0.5).text(str.toUpperCase(), L, doc.y, { width: W, characterSpacing: 0.6 });
       const y = doc.y + 0.5;
-      doc.moveTo(L, y).lineTo(L + W, y).lineWidth(0.7).stroke('#000');
+      doc.moveTo(L, y).lineTo(L + W, y).lineWidth(0.7).stroke(BLUE);
+      doc.fillColor('#000');
       doc.y = y + 3;
     };
     const row = (left, right, font) => {
@@ -52,7 +54,7 @@ function draw(content, fs, cap) {
     // ---- header ----
     doc.font(BOLD).fontSize(19).text(MASTER.name, L, doc.y, { width: W });
     text(content.title, BOLD, fs + 1.5);
-    text(`${MASTER.location} | ${MASTER.phone} | ${MASTER.email} | ${MASTER.linkedin} | ${MASTER.github}`, REG, fs - 1.3);
+    text(`${MASTER.phone} | ${MASTER.email} | ${MASTER.linkedin} | ${MASTER.github}`, REG, fs - 1.3);
 
     heading('Summary');
     text(content.summary, REG, fs);
@@ -66,34 +68,40 @@ function draw(content, fs, cap) {
     heading('Experience');
     for (const job of content.experience) {
       row(job.title, job.dates, BOLD);
-      row(job.company, job.place, ITAL);
+      row(job.company, '', ITAL);
       for (const b of job.bullets.slice(0, cap)) bullet(b.text);
       doc.y += 2;
     }
 
     heading('Projects');
-    for (const p of content.projects) {
-      bullet(`${p.name} (${p.site}): ${p.text}`);
+    for (const p of content.projects.slice(0, projCap)) {
+      bullet(`${p.name}${p.site ? ` (${p.site})` : ''}: ${p.text}`);
     }
 
     heading('Education');
     const e = MASTER.education;
     row(e.degree, e.dates, BOLD);
-    row(e.school, e.place, ITAL);
+    row(e.school, '', ITAL);
     text(e.other, REG, fs - 0.5);
 
     doc.end();
   });
 }
 
-// Shrink the font, then drop the least relevant bullets, until it fits one page
+// Always one page: first drop the least relevant projects, then bullets, and only then shrink the font (never below 8.6)
 export async function renderPdf(content) {
-  const sizes = [9.8, 9.4, 9.0, 8.6, 8.2];
-  for (const cap of [3, 2]) {
-    for (const fs of sizes) {
-      const out = await draw(content, fs, cap);
-      if (out.pages === 1) return out.buffer;
+  const sizes = [9.8, 9.4, 9.0, 8.6];
+  for (const projCap of [6, 5, 4, 3]) {
+    for (const cap of [3, 2]) {
+      for (const fs of sizes) {
+        const out = await draw(content, fs, cap, projCap);
+        if (out.pages === 1) return out.buffer;
+      }
     }
   }
-  return (await draw(content, 8, 2)).buffer; // should not happen; better a small file than none
+  for (const fs of [8.2, 8]) {
+    const out = await draw(content, fs, 2, 3);
+    if (out.pages === 1) return out.buffer;
+  }
+  return (await draw(content, 8, 2, 2)).buffer; // should not happen; better a small file than none
 }

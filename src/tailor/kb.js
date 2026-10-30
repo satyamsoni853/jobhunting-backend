@@ -27,7 +27,8 @@ export const SKILLS = [
   S('svelte', 'Svelte', 'Frontend', /\bsvelte(?:kit)?\b/i),
   S('jquery', 'jQuery', 'Frontend', /\bjquery\b/i),
   S('bootstrap', 'Bootstrap', 'Frontend', /\bbootstrap\b/i),
-  S('webpack', 'Webpack', 'Frontend', /\bwebpack\b|\bvite\b|\brollup\b/i),
+  S('webpack', 'Webpack', 'Frontend', /webpack|rollup/i),
+  S('vite', 'Vite', 'Frontend', /vite/i, true),
   S('storybook', 'Storybook', 'Frontend', /storybook/i),
 
   // ---- UI libraries (have) ----
@@ -51,8 +52,9 @@ export const SKILLS = [
   S('websockets', 'WebSockets', 'Tools and DevOps', /websockets?|socket\.?io|real[- ]time/i, true),
 
   // ---- Backend (not on the resume) ----
-  S('django', 'Django', 'Backend', /\bdjango\b|\bdrf\b/i, false, ['python']),
-  S('flask', 'Flask', 'Backend', /\bflask\b/i, false, ['python']),
+  S('django', 'Django', 'Backend', /\bdjango\b|\bdrf\b/i, true, ['python']),
+  S('flask', 'Flask', 'Backend', /flask/i, true, ['python']),
+  S('maven', 'Maven', 'Backend', /maven|gradle/i, true, ['java']),
   S('golang', 'Golang', 'Backend', /\bgolang\b|\bgo\s+(?:developer|engineer|backend|lang)\b/i),
   S('php', 'PHP', 'Backend', /\bphp\b/i),
   S('laravel', 'Laravel', 'Backend', /laravel|symfony|codeigniter/i, false, ['php']),
@@ -93,14 +95,16 @@ export const SKILLS = [
   S('testing', 'Testing', 'Tools and DevOps', /\bjest\b|\bcypress\b|\bselenium\b|\bjunit\b|\bplaywright\b|\bpytest\b|\bmocha\b|unit test|\btdd\b/i),
 
   // ---- Mobile ----
-  S('reactnative', 'React Native', 'Mobile', /react[- ]native/i),
+  S('reactnative', 'React Native', 'Mobile', /react[- ]native/i, true, ['react', 'javascript']),
   S('flutter', 'Flutter', 'Mobile', /\bflutter\b|\bdart\b/i),
   S('android', 'Android', 'Mobile', /\bandroid\b/i),
   S('ios', 'iOS', 'Mobile', /\bios\b|swiftui|\bswift\b(?=\s*(?:developer|programming|language|\/|,))|objective[- ]c/i),
 
   // ---- Data / AI (not on the resume) ----
   S('ml', 'Machine Learning', 'Data', /machine learning|\bml\b|deep learning|\bllm\b|\bnlp\b|tensorflow|pytorch|scikit|computer vision|generative ai|\bgenai\b/i),
-  S('datasci', 'Data Science', 'Data', /data scien|data analy|\bpandas\b|\bnumpy\b|power ?bi|tableau|\betl\b|data engineer|apache spark|pyspark|airflow/i),
+  S('pandas', 'Pandas', 'Data', /pandas/i, true, ['python']),
+  S('numpy', 'NumPy', 'Data', /numpy/i, true, ['python']),
+  S('datasci', 'Data Science', 'Data', /data scien|data analy|power ?bi|tableau|\betl\b|data engineer|apache spark|pyspark|airflow/i),
 
   // ---- Business (exposure only) ----
   S('erp', 'ERP / SAP', 'Business', /\bsap\b|\berp\b|odoo|salesforce|dynamics 365/i),

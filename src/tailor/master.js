@@ -3,7 +3,6 @@
 
 export const MASTER = {
   name: 'Satyam Soni',
-  location: 'Gurugram, India',
   phone: '+91 9696050128',
   email: 'satyam.soni1312@gmail.com',
   linkedin: 'linkedin.com/in/satyam-soni-833873293',
@@ -41,18 +40,18 @@ export const MASTER = {
 
   // Skill groups in default order. Ids refer to kb.js. Only skills the candidate really has.
   skillGroups: [
-    { group: 'Frontend', ids: ['react', 'nextjs', 'angular', 'redux', 'javascript', 'typescript', 'html', 'css', 'tailwind', 'graphql', 'gsap'] },
-    { group: 'Backend', ids: ['java', 'springboot', 'spring', 'hibernate', 'nodejs', 'express', 'nestjs', 'python', 'fastapi', 'rest'] },
+    { group: 'Frontend', ids: ['react', 'nextjs', 'angular', 'redux', 'javascript', 'typescript', 'html', 'css', 'tailwind', 'graphql', 'gsap', 'framer', 'vite'] },
+    { group: 'Backend', ids: ['java', 'springboot', 'spring', 'hibernate', 'maven', 'nodejs', 'express', 'nestjs', 'python', 'fastapi', 'django', 'flask', 'rest'] },
     { group: 'Databases', ids: ['mysql', 'postgres', 'mongodb', 'oracle', 'sql'] },
     { group: 'Tools and DevOps', ids: ['git', 'docker', 'linux', 'postman', 'figma', 'websockets'] },
     { group: 'UI Libraries', ids: ['mui', 'shadcn', 'chakra', 'daisyui'] },
+    { group: 'Mobile and Data', ids: ['reactnative', 'pandas', 'numpy'] },
   ],
 
   experience: [
     {
       title: 'Full Stack Developer',
       company: 'Cloudfire IT Services',
-      place: 'Gurugram, India (Remote)',
       dates: 'Nov 2025 - Present',
       bullets: [
         { text: 'Build a travel booking website end to end as a project-based full stack developer, covering frontend, backend and database work.', tags: ['nextjs', 'react', 'rest', 'sql'] },
@@ -63,7 +62,6 @@ export const MASTER = {
     {
       title: 'Front-End Developer',
       company: 'Uniisphere Unified Pvt Ltd',
-      place: 'Gurugram, India',
       dates: 'Nov 2024 - Nov 2025',
       bullets: [
         { text: 'Built responsive, animated interfaces for an early-stage unified job portal and social media platform using Next.js, React.js, Material UI and ShadCN UI.', tags: ['nextjs', 'react', 'mui', 'shadcn', 'responsive', 'css'] },
@@ -76,15 +74,20 @@ export const MASTER = {
   projects: [
     { name: 'SunspotsHolidays', site: 'sunspotsholidays.com', text: 'Full stack travel booking platform to search and book flights, hotels and car rentals, with real-time search, secure authentication and booking management.', tags: ['rest', 'sql', 'websockets'] },
     { name: 'Ashwinisdresearch', site: 'ashwinisdresearch.com', text: 'Website for a trading education company providing educational resources on financial markets.', tags: ['html', 'css', 'javascript'] },
+    { name: 'HRMaster CRM', text: 'Enterprise HR management system for employees, departments and attendance, with an admin dashboard and analytics (React, Spring Boot).', tags: ['react', 'springboot', 'java'] },
+    { name: 'Orra Healthy Cure', text: 'E-commerce website for an Ayurvedic wellness brand with a responsive, heritage-inspired UI (React, Tailwind CSS).', tags: ['react', 'tailwind', 'responsive'] },
+    { name: 'CloudFire IT Services Website', text: 'Agency website with 3D visuals and smooth GSAP animations (Next.js, Three.js, GSAP).', tags: ['nextjs', 'gsap'] },
+    { name: 'SlotSync Doctor Appointment', text: 'Appointment booking system with slot management and patient records (Java, Spring Boot, Thymeleaf).', tags: ['java', 'springboot'] },
+    { name: 'Resume Analyzer', text: 'AI-powered tool that scores resumes and gives feedback (React, TypeScript).', tags: ['react', 'typescript'] },
+    { name: 'TravelTips', text: 'Travel tips and destination guide website built as a freelance project with a fast Next.js frontend.', tags: ['nextjs', 'react'] },
     { name: 'Portfolio Website', site: 'satyam-soni-video.vercel.app', text: 'Next.js portfolio with server-side performance optimization, Framer Motion animations and Material UI.', tags: ['nextjs', 'react', 'mui', 'framer'] },
   ],
 
   education: {
     degree: 'B.Tech in Computer Science',
     school: 'Kamala Nehru Institute of Physical and Social Sciences',
-    place: 'Sultanpur, India',
     dates: '2021 - 2025',
-    other: 'Higher Secondary (12th): Sangam Modern Inter College, Sultanpur | Secondary (10th): Maharishi Vidya Mandir, Prayagraj',
+    other: 'Higher Secondary (12th): Sangam Modern Inter College | Secondary (10th): Maharishi Vidya Mandir',
   },
 
   // Short facts the cover note may use, per tag. Kept to what the resume shows.

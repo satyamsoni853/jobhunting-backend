@@ -93,8 +93,8 @@ export function buildContent(a, who = {}) {
 
   const opening =
     roleId === 'freelance'
-      ? `I am writing to offer my help on freelance and contract projects. I am a Full Stack Developer based in Gurugram with hands-on experience in ${list(top)}.`
-      : `I am writing to apply for the ${a.roleLabel} role${company ? ` at ${company}` : ''}. I am a Full Stack Developer based in Gurugram with hands-on experience in ${list(top)}.`;
+      ? `I am writing to offer my help on freelance and contract projects. I am a Full Stack Developer with hands-on experience in ${list(top)}.`
+      : `I am writing to apply for the ${a.roleLabel} role${company ? ` at ${company}` : ''}. I am a Full Stack Developer with hands-on experience in ${list(top)}.`;
   const closing = `My resume is attached, arranged for this role. I am available to join immediately${a.signals.remote ? ' and comfortable working remotely' : ''}, and happy to share more details or take a technical round at your convenience.`;
 
   const body = [

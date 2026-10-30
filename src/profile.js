@@ -10,7 +10,7 @@ export const PROFILE = {
   body: [
     'Dear Hiring Team,',
     '',
-    'I am writing to apply for the Full Stack Developer role at your company. I am a Full Stack Developer based in Gurugram with experience in React.js and Next.js on the frontend, and Java (Spring Boot), Python (FastAPI) and Node.js (Express.js) on the backend, along with MySQL, PostgreSQL and MongoDB.',
+    'I am writing to apply for the Full Stack Developer role at your company. I am a Full Stack Developer with experience in React.js and Next.js on the frontend, and Java (Spring Boot), Python (FastAPI) and Node.js (Express.js) on the backend, along with MySQL, PostgreSQL and MongoDB.',
     '',
     'Most recently I built a travel booking platform end to end, covering the Next.js frontend, REST API integration and the search and booking flows. Before that I built a job portal and social platform with real-time chat using WebSockets.',
     '',
