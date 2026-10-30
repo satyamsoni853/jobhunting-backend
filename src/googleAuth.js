@@ -45,7 +45,8 @@ export async function initGoogle() {
 const page = (ok, text) =>
   `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Gmail API</title>` +
   `<body style="font-family:system-ui,sans-serif;background:#0a0a0f;color:#f3f4f6;display:grid;place-items:center;min-height:100vh;margin:0">` +
-  `<div style="max-width:420px;padding:24px;text-align:center"><div style="font-size:42px">${ok ? '✅' : '⚠️'}</div><h2>${ok ? 'Gmail API connected' : 'Could not connect'}</h2><p>${text}</p></div>`;
+  `<div style="max-width:420px;padding:24px;text-align:center"><div style="font-size:42px">${ok ? '✅' : '⚠️'}</div><h2>${ok ? 'Gmail API connected' : 'Could not connect'}</h2><p>${text}</p></div>` +
+  (ok ? `<script>setTimeout(function(){window.close()},2000)</script>` : '');
 
 export function registerGoogleAuth(app, auth) {
   // Step 1 (key protected): returns the Google sign-in address for the website to open
@@ -95,7 +96,7 @@ export function registerGoogleAuth(app, auth) {
       }
       stored = j.refresh_token;
       persist();
-      res.send(page(true, 'You can close this tab and go back to the website. Press "Test connection" there.'));
+      res.send(page(true, 'This tab closes by itself. Go back to the website and press "Test connection" there.'));
     } catch (e) {
       res.status(500).send(page(false, e.message));
     }
