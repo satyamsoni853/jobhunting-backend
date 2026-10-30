@@ -8,7 +8,8 @@ const BOLD = 'Helvetica-Bold';
 const ITAL = 'Helvetica-Oblique';
 const BLUE = '#1F4E9E';
 
-function draw(content, fs, cap, projCap) {
+// extra: points of spacing added between sections and bullets, used to fill the rest of the page
+function draw(content, fs, cap, projCap, extra = 0) {
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({
       size: 'A4',
@@ -21,7 +22,8 @@ function draw(content, fs, cap, projCap) {
     doc.on('pageAdded', () => {
       pages += 1;
     });
-    doc.on('end', () => resolve({ buffer: Buffer.concat(chunks), pages }));
+    let endY = 0;
+    doc.on('end', () => resolve({ buffer: Buffer.concat(chunks), pages, endY }));
     doc.on('error', reject);
 
     const L = MARGIN.left;
@@ -31,11 +33,12 @@ function draw(content, fs, cap, projCap) {
     const text = (str, font, size, opts = {}) => doc.font(font).fontSize(size).text(str, L, doc.y, { width: W, lineGap, ...opts });
     const heading = (str) => {
       doc.moveDown(0.5);
+      doc.y += extra * 1.5;
       doc.fillColor(BLUE).font(BOLD).fontSize(fs + 0.5).text(str.toUpperCase(), L, doc.y, { width: W, characterSpacing: 0.6 });
       const y = doc.y + 0.5;
       doc.moveTo(L, y).lineTo(L + W, y).lineWidth(0.7).stroke(BLUE);
       doc.fillColor('#000');
-      doc.y = y + 3;
+      doc.y = y + 3 + extra * 0.5;
     };
     const row = (left, right, font) => {
       const y = doc.y;
@@ -48,7 +51,7 @@ function draw(content, fs, cap, projCap) {
       // a plain hyphen extracts as text in every ATS, unlike the bullet glyph of the built-in font
       doc.font(REG).fontSize(fs).text('-', L + 3, y, { lineBreak: false });
       doc.font(REG).fontSize(fs).text(str, L + 14, y, { width: W - 14, lineGap });
-      doc.y += 1.2;
+      doc.y += 1.2 + extra * 0.6;
     };
 
     // ---- header ----
@@ -63,6 +66,7 @@ function draw(content, fs, cap, projCap) {
     for (const g of content.groups) {
       doc.font(BOLD).fontSize(fs).text(`${g.group}: `, L, doc.y, { width: W, continued: true, lineGap: 0.8 });
       doc.font(REG).text(g.items.join(', '), { lineGap: 0.8 });
+      doc.y += extra * 0.5;
     }
 
     heading('Experience');
@@ -70,7 +74,7 @@ function draw(content, fs, cap, projCap) {
       row(job.title, job.dates, BOLD);
       row(job.company, '', ITAL);
       for (const b of job.bullets.slice(0, cap)) bullet(b.text);
-      doc.y += 2;
+      doc.y += 2 + extra;
     }
 
     heading('Projects');
@@ -84,24 +88,47 @@ function draw(content, fs, cap, projCap) {
     row(e.school, '', ITAL);
     text(e.other, REG, fs - 0.5);
 
+    endY = doc.y;
     doc.end();
   });
 }
 
-// Always one page: first drop the least relevant projects, then bullets, and only then shrink the font (never below 8.6)
+// Always one page, and the page is filled: pick the largest readable font with the most content that fits,
+// grow the font while it still fits, then spread what is left as spacing between sections and bullets.
 export async function renderPdf(content) {
-  const sizes = [9.8, 9.4, 9.0, 8.6];
-  for (const projCap of [6, 5, 4, 3]) {
-    for (const cap of [3, 2]) {
-      for (const fs of sizes) {
+  const total = content.projects.length;
+  let pick = null;
+  search: for (const fs of [9.8, 9.4, 9.0, 8.6, 8.2, 8]) {
+    for (let projCap = total; projCap >= 2; projCap -= 1) {
+      for (const cap of [3, 2]) {
         const out = await draw(content, fs, cap, projCap);
-        if (out.pages === 1) return out.buffer;
+        if (out.pages === 1) {
+          pick = { fs, cap, projCap, out };
+          break search;
+        }
       }
     }
   }
-  for (const fs of [8.2, 8]) {
-    const out = await draw(content, fs, 2, 3);
-    if (out.pages === 1) return out.buffer;
+  if (!pick) return (await draw(content, 8, 2, 2)).buffer; // should not happen; better a small file than none
+
+  // grow the font a little while the page still holds it
+  for (let fs = pick.fs + 0.2; fs <= 10.4; fs += 0.2) {
+    const out = await draw(content, fs, pick.cap, pick.projCap);
+    if (out.pages !== 1) break;
+    pick = { ...pick, fs, out };
   }
-  return (await draw(content, 8, 2, 2)).buffer; // should not happen; better a small file than none
+
+  // spread the remaining space (binary search for the largest spacing that still fits one page)
+  let lo = 0;
+  let hi = 10;
+  let best = pick.out;
+  for (let i = 0; i < 7; i += 1) {
+    const mid = (lo + hi) / 2;
+    const out = await draw(content, pick.fs, pick.cap, pick.projCap, mid);
+    if (out.pages === 1) {
+      best = out;
+      lo = mid;
+    } else hi = mid;
+  }
+  return best.buffer;
 }
