@@ -52,7 +52,7 @@ export const MASTER = {
     {
       title: 'Full Stack Developer',
       company: 'Cloudfire IT Services',
-      dates: 'Nov 2025 - Present',
+      dates: 'Nov 2024 - Present',
       bullets: [
         { text: 'Build a travel booking website end to end as a project-based full stack developer, covering frontend, backend and database work.', tags: ['nextjs', 'react', 'rest', 'sql'] },
         { text: 'Developed the frontend in Next.js with responsive layouts, smooth navigation and cross-device compatibility.', tags: ['nextjs', 'react', 'css', 'html', 'responsive'] },
