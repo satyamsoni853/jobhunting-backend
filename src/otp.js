@@ -3,26 +3,36 @@ import crypto from 'crypto';
 // Password for the "Satyam" screen. Pressing Satyam asks for it, and the profile text and the send endpoints work only
 // after it is entered. It is read from the host's env (SATYAM_PIN), never written in code: the repo is public.
 // Anybody can try, so wrong tries are limited: 5 wrong ones lock the screen for 15 minutes (for everybody).
-const TOKEN_TTL = 30 * 60 * 1000;
+const TOKEN_TTL = 24 * 60 * 60 * 1000; // one day
 const MAX_ATTEMPTS = 5;
 const LOCK_MS = () => Number(process.env.PIN_LOCK_MS ?? 15 * 60 * 1000);
 
 let wrong = 0;
 let lockedUntil = 0;
-const tokens = new Map(); // token -> expires
 
 const digest = (s) => crypto.createHash('sha256').update(String(s)).digest();
 
-const cleanTokens = () => {
-  const now = Date.now();
-  for (const [t, exp] of tokens) if (exp < now) tokens.delete(t);
+// A token is "<expiry>.<signature>", signed with a key made from SATYAM_PIN and AUTO_API_KEY. Nothing is kept in memory,
+// so a token stays valid for its whole day even when the free server restarts (every deploy). Changing the password
+// or the key makes every old token invalid.
+const sign = (exp) => crypto.createHmac('sha256', `${process.env.SATYAM_PIN || ''}:${process.env.AUTO_API_KEY || ''}`).update(String(exp)).digest('hex');
+const issueToken = () => {
+  const exp = Date.now() + TOKEN_TTL;
+  return `${exp}.${sign(exp)}`;
+};
+const validToken = (token) => {
+  if (!(process.env.SATYAM_PIN || '').trim()) return false;
+  const [e, sig = ''] = String(token || '').split('.');
+  const exp = Number(e);
+  if (!exp || exp < Date.now() || !sig) return false;
+  const want = Buffer.from(sign(exp));
+  const got = Buffer.from(sig);
+  return want.length === got.length && crypto.timingSafeEqual(want, got);
 };
 
 // Guard for the Satyam routes: a valid token from /verify, sent as X-Profile-Token
 export function requireProfileToken(req, res, next) {
-  cleanTokens();
-  const exp = tokens.get(req.get('X-Profile-Token') || '');
-  if (!exp || exp < Date.now()) return res.status(401).json({ error: 'Enter your password to continue.' });
+  if (!validToken(req.get('X-Profile-Token'))) return res.status(401).json({ error: 'Enter your password to continue.' });
   next();
 }
 
@@ -48,8 +58,6 @@ export function registerOtp(app) {
     }
 
     wrong = 0;
-    const token = crypto.randomBytes(24).toString('hex');
-    tokens.set(token, now + TOKEN_TTL);
-    res.json({ token, expiresIn: TOKEN_TTL / 1000 });
+    res.json({ token: issueToken(), expiresIn: TOKEN_TTL / 1000 });
   });
 }
