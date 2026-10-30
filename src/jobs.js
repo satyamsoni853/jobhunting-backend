@@ -70,30 +70,6 @@ async function himalayas() {
   }));
 }
 
-const WWR_FEEDS = ['remote-full-stack-programming-jobs', 'remote-front-end-programming-jobs', 'remote-back-end-programming-jobs', 'remote-programming-jobs', 'remote-devops-sysadmin-jobs'];
-async function weWorkRemotely() {
-  const out = [];
-  for (const feed of WWR_FEEDS) {
-    const xml = await getText(`https://weworkremotely.com/categories/${feed}.rss`);
-    for (const item of xml.split('<item>').slice(1)) {
-      const tag = (n) => (item.match(new RegExp(`<${n}>([\\s\\S]*?)</${n}>`)) || [])[1] || '';
-      const full = decode(tag('title')); // "Company: Position"
-      const i = full.indexOf(': ');
-      out.push({
-        id: `wwr-${tag('guid') || full}`,
-        source: 'We Work Remotely',
-        title: i > 0 ? full.slice(i + 2) : full,
-        company: i > 0 ? full.slice(0, i) : '',
-        location: decode(tag('region')),
-        url: decode(tag('link') || tag('guid')),
-        postedAt: tag('pubDate'),
-        text: strip(tag('description')),
-      });
-    }
-  }
-  return out;
-}
-
 async function remotiveExtra() {
   // Remotive's own search finds freelance and contract work that the developer category misses
   const out = [];
@@ -159,13 +135,69 @@ async function workingNomads() {
   }));
 }
 
-const SOURCES = [remoteOk, remotive, remotiveExtra, himalayas, weWorkRemotely, jobicy, arbeitnow, workingNomads];
+// Freelancer.com: real freelance projects (public API, no key). Each one links to its project page, bid there by hand.
+const FREELANCER_QUERIES = ['react', 'next.js', 'node.js', 'javascript', 'full stack', 'website development', 'web application', 'mern', 'spring boot', 'python api'];
+async function freelancerCom() {
+  const out = new Map();
+  const results = await Promise.allSettled(
+    FREELANCER_QUERIES.map((q) =>
+      getText(`https://www.freelancer.com/api/projects/0.1/projects/active/?query=${encodeURIComponent(q)}&limit=25&compact=true&job_details=true&sort_field=time_submitted`).then((t) => JSON.parse(t))
+    )
+  );
+  for (const r of results) {
+    if (r.status !== 'fulfilled') continue;
+    for (const p of r.value?.result?.projects || []) {
+      if (!p.seo_url || out.has(p.id)) continue;
+      const sign = p.currency?.sign || '';
+      const b = p.budget || {};
+      const budget = b.minimum || b.maximum ? `${sign}${b.minimum ?? ''}-${sign}${b.maximum ?? ''} ${p.currency?.code || ''}${p.type === 'hourly' ? ' per hour' : ''}`.trim() : '';
+      out.set(p.id, {
+        id: `fl-${p.id}`,
+        source: 'Freelancer.com',
+        freelance: true,
+        title: decode(p.title),
+        company: '',
+        location: '',
+        url: `https://www.freelancer.com/projects/${p.seo_url}`,
+        postedAt: p.time_submitted ? new Date(p.time_submitted * 1000).toISOString() : '',
+        budget,
+        text: `${strip(p.preview_description)} freelance project ${budget} ${(p.jobs || []).map((j) => j.name).join(' ')}`,
+      });
+    }
+  }
+  return [...out.values()];
+}
+
+// Jobspresso: hand-picked remote jobs, some contract work
+async function jobspresso() {
+  const xml = await getText('https://jobspresso.co/feed/?post_type=job_listing');
+  return xml
+    .split('<item>')
+    .slice(1)
+    .map((item) => {
+      const tag = (n) => (item.match(new RegExp(`<${n}[^>]*>(?:<!.CDATA.)?([^]*?)(?:..>)?</${n}>`)) || [])[1] || '';
+      return {
+        id: `jsp-${tag('guid') || tag('link')}`,
+        source: 'Jobspresso',
+        title: decode(tag('title')),
+        company: '',
+        location: '',
+        url: decode(tag('link')),
+        postedAt: tag('pubDate'),
+        text: `${strip(tag('description'))} ${[...item.matchAll(/<category[^>]*>(?:<!\[CDATA\[)?([^<\]]*)/g)].map((m) => m[1]).join(' ')}`,
+      };
+    });
+}
+
+const SOURCES = [remoteOk, remotive, remotiveExtra, himalayas, jobicy, arbeitnow, workingNomads, freelancerCom, jobspresso];
 
 // The candidate works remotely from India: jobs limited to another region are out of reach
 const OPEN_LOCATION = /worldwide|anywhere|global|international|\bindia\b|apac|asia|^remote$|^$/i;
 
 // A job board lists every kind of job. Only developer type titles are worth matching.
 const DEV_TITLE = /develop|engineer|programmer|\bsde\b|\bswe\b|software|front[- ]?end|back[- ]?end|full[- ]?stack|\breact\b|\bnode|\bpython\b|\bjava\b|web (?:dev|app)|coder/i;
+// Freelance gigs are often titled by the work ("Build a website"), not by a developer title
+const FREELANCE_DEV = /web|website|\bapp\b|\bapi\b|react|next\.?js|node|javascript|typescript|python|java\b|full[- ]?stack|front|back|dashboard|landing page|mvp|saas|portal|e-?commerce|shopify|wordpress|crm/i;
 
 // What each website category looks for. A job is shown for a chosen category when its title or tags match.
 // A chosen category with no line here (Remote, Web / Software Engineer) accepts every developer job.
@@ -210,7 +242,7 @@ function score(job) {
   const a = analyzePost(`${job.title}. ${job.title}. ${job.text}`);
   let fit = a.fit;
   const reasons = [...a.reasons];
-  if (!DEV_TITLE.test(job.title)) {
+  if (!DEV_TITLE.test(job.title) && !(job.freelance && FREELANCE_DEV.test(job.title))) {
     fit = Math.min(fit, 0.2);
     reasons.push('not a developer role');
   }
@@ -219,9 +251,12 @@ function score(job) {
     fit = Math.max(0, fit - 0.35);
     reasons.push(`location: ${loc}`);
   }
+  const freelance = Boolean(job.freelance) || CATEGORY_MATCH.freelancing.test(`${job.title} ${job.text.slice(-300)} ${job.text.slice(0, 1200)}`);
   return {
     id: job.id,
     source: job.source,
+    freelance,
+    budget: job.budget || '',
     title: job.title,
     company: job.company,
     location: loc || 'Worldwide',
@@ -252,20 +287,23 @@ async function refresh() {
   cache = { at: Date.now(), jobs: scored, errors, total: jobs.length };
 }
 
-export async function getJobs({ min = minFit(), limit = 60, q = '', source = '', categories = [] } = {}) {
+export async function getJobs({ min = minFit(), limit = 60, q = '', source = '', categories = [], freelanceOnly = false } = {}) {
   if (Date.now() - cache.at > TTL) await refresh();
   let list = cache.jobs.filter((j) => j.fit >= min);
-  if (categories.length) list = list.filter((j) => matchesCategories(j, categories));
+  // freelance only: keep gigs, and still follow the chosen tech roles (the "freelancing" role itself is what this switch does)
+  const techKeys = freelanceOnly ? categories.filter((k) => k !== 'freelancing') : categories;
+  if (freelanceOnly) list = list.filter((j) => j.freelance);
+  if (techKeys.length) list = list.filter((j) => matchesCategories(j, techKeys));
   if (source) list = list.filter((j) => j.source.toLowerCase() === source.toLowerCase());
   if (q) {
     const needle = q.toLowerCase();
     list = list.filter((j) => `${j.title} ${j.company} ${j.skills.join(' ')}`.toLowerCase().includes(needle));
   }
   list = list
-    .sort((a, b) => b.fit - a.fit || String(b.postedAt).localeCompare(String(a.postedAt)))
+    .sort((a, b) => Number(b.freelance) - Number(a.freelance) || b.fit - a.fit || String(b.postedAt).localeCompare(String(a.postedAt)))
     .slice(0, limit)
     .map(({ tags, blurb, ...job }) => job); // the matching text stays on the server
-  return { updatedAt: new Date(cache.at).toISOString(), sources: [...new Set(cache.jobs.map((j) => j.source))].sort(), categories, scanned: cache.total, minFit: min, errors: cache.errors, jobs: list };
+  return { updatedAt: new Date(cache.at).toISOString(), sources: [...new Set(cache.jobs.map((j) => j.source))].sort(), categories, freelanceOnly, scanned: cache.total, minFit: min, errors: cache.errors, jobs: list };
 }
 
 export function registerJobs(app) {
@@ -273,7 +311,7 @@ export function registerJobs(app) {
   app.get('/api/jobs', async (req, res) => {
     try {
       const min = req.query.minFit !== undefined ? Number(req.query.minFit) : minFit();
-      res.json(await getJobs({ min, limit: Math.min(Number(req.query.limit) || 60, 150), q: String(req.query.q || ''), source: String(req.query.source || ''), categories: req.query.selected === '1' ? loadSelection() : [] }));
+      res.json(await getJobs({ min, limit: Math.min(Number(req.query.limit) || 60, 150), q: String(req.query.q || ''), source: String(req.query.source || ''), categories: req.query.selected === '1' ? loadSelection() : [], freelanceOnly: req.query.freelance === '1' }));
     } catch (e) {
       res.status(502).json({ error: e.message });
     }

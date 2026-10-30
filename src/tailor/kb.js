@@ -27,8 +27,8 @@ export const SKILLS = [
   S('svelte', 'Svelte', 'Frontend', /\bsvelte(?:kit)?\b/i),
   S('jquery', 'jQuery', 'Frontend', /\bjquery\b/i),
   S('bootstrap', 'Bootstrap', 'Frontend', /\bbootstrap\b/i),
-  S('webpack', 'Webpack', 'Frontend', /webpack|rollup/i),
-  S('vite', 'Vite', 'Frontend', /vite/i, true),
+  S('webpack', 'Webpack', 'Frontend', /\bwebpack\b|\brollup\b/i),
+  S('vite', 'Vite', 'Frontend', /\bvite\b/i, true),
   S('storybook', 'Storybook', 'Frontend', /storybook/i),
 
   // ---- UI libraries (have) ----
@@ -53,8 +53,8 @@ export const SKILLS = [
 
   // ---- Backend (not on the resume) ----
   S('django', 'Django', 'Backend', /\bdjango\b|\bdrf\b/i, true, ['python']),
-  S('flask', 'Flask', 'Backend', /flask/i, true, ['python']),
-  S('maven', 'Maven', 'Backend', /maven|gradle/i, true, ['java']),
+  S('flask', 'Flask', 'Backend', /\bflask\b/i, true, ['python']),
+  S('maven', 'Maven', 'Backend', /\bmaven\b|\bgradle\b/i, true, ['java']),
   S('golang', 'Golang', 'Backend', /\bgolang\b|\bgo\s+(?:developer|engineer|backend|lang)\b/i),
   S('php', 'PHP', 'Backend', /\bphp\b/i),
   S('laravel', 'Laravel', 'Backend', /laravel|symfony|codeigniter/i, false, ['php']),
@@ -102,8 +102,8 @@ export const SKILLS = [
 
   // ---- Data / AI (not on the resume) ----
   S('ml', 'Machine Learning', 'Data', /machine learning|\bml\b|deep learning|\bllm\b|\bnlp\b|tensorflow|pytorch|scikit|computer vision|generative ai|\bgenai\b/i),
-  S('pandas', 'Pandas', 'Data', /pandas/i, true, ['python']),
-  S('numpy', 'NumPy', 'Data', /numpy/i, true, ['python']),
+  S('pandas', 'Pandas', 'Data', /\bpandas\b/i, true, ['python']),
+  S('numpy', 'NumPy', 'Data', /\bnumpy\b/i, true, ['python']),
   S('datasci', 'Data Science', 'Data', /data scien|data analy|power ?bi|tableau|\betl\b|data engineer|apache spark|pyspark|airflow/i),
 
   // ---- Business (exposure only) ----
