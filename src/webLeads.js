@@ -287,14 +287,25 @@ area["name:en"="${city}"]["boundary"="administrative"]->.a;
   nwr["office"~"^(it|company|web_design|advertising|software)$"]["contact:email"](area.a);
 );
 out tags 300;`;
-  const res = await fetch('https://overpass-api.de/api/interpreter', {
-    method: 'POST',
-    headers: { 'User-Agent': OSM_UA, 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: `data=${encodeURIComponent(q)}`,
-    signal: AbortSignal.timeout(60000),
-  });
-  if (!res.ok) throw new Error(`Overpass ${res.status}`);
-  const d = await res.json();
+  // public Overpass servers; the next one is tried when a server cannot be reached from the host
+  let d = null;
+  let lastError = '';
+  for (const server of ['https://overpass-api.de/api/interpreter', 'https://overpass.kumi.systems/api/interpreter', 'https://overpass.private.coffee/api/interpreter']) {
+    try {
+      const res = await fetch(server, {
+        method: 'POST',
+        headers: { 'User-Agent': OSM_UA, 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: `data=${encodeURIComponent(q)}`,
+        signal: AbortSignal.timeout(45000),
+      });
+      if (!res.ok) throw new Error(`${res.status}`);
+      d = await res.json();
+      break;
+    } catch (e) {
+      lastError = `${new URL(server).hostname}: ${e.cause?.code || e.message}`;
+    }
+  }
+  if (!d) throw new Error(`Overpass unreachable (${lastError})`);
   const out = [];
   for (const e of d.elements || []) {
     const t = e.tags || {};
