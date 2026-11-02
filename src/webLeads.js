@@ -117,7 +117,7 @@ const WEEK_MS = 7 * 24 * 3600 * 1000;
 // people offering their own work are competitors, not clients
 const SEEKER = /#getfedihired|#opentowork|open to work|available for (?:hire|work|freelance)|(?:i am|i'm|i’m) (?:a |an )?[\w .+/-]{0,40}(?:developer|engineer|designer)[^.]{0,80}(?:available|for hire|hire me|looking for)|hire me|seeking (?:work|employment|a job)|looking for (?:a )?(?:job|work|new role|opportunit)|my (?:portfolio|resume|cv)\b/i;
 
-const MASTODON = ['mastodon.social', 'fosstodon.org', 'hachyderm.io', 'mastodon.online', 'techhub.social', 'mas.to', 'mstdn.social', 'indieweb.social'];
+const MASTODON = ['mastodon.social', 'fosstodon.org', 'hachyderm.io', 'mastodon.online', 'techhub.social', 'mas.to', 'indieweb.social'];
 const MASTODON_TAGS = ['hiring', 'freelance', 'devjobs', 'jobopening', 'remotework', 'webdev', 'jobs', 'freelancer', 'remotejobs', 'contractwork', 'hireadeveloper', 'wordpress'];
 
 async function mastodon() {
