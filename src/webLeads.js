@@ -5,7 +5,8 @@ import { GROUP_NAME_RE } from './blocklist.js';
 // Web lead hunter: finds fresh public posts and pages that carry a contact email.
 //  1. Google Custom Search (free 100 queries/day) when GOOGLE_CSE_KEY + GOOGLE_CSE_CX are set, results from the past week.
 //  2. DuckDuckGo HTML search (no key) as the fallback, past week.
-//  3. Reddit r/forhire and r/hiring new posts (public JSON).
+//  3. Brave Search API when BRAVE_API_KEY is set (free plan).
+//  4. Public feeds: Mastodon hashtags (5 servers), HN comments, DEV.to, GitHub issues. Reddit blocks servers (403), so it is not used.
 // Every page found is fetched, the emails are read from its text and queued with the text around the email,
 // so the normal fit check, blocklist, 7-day rule and tailoring all apply. Nothing is mailed from here directly.
 const UA = 'Mozilla/5.0 (compatible; jobhunting-bot; personal freelance search)';
@@ -55,7 +56,7 @@ async function fetchText(url, { json = false } = {}) {
   const type = res.headers.get('content-type') || '';
   if (!json && !/text\/html|text\/plain|xml/i.test(type)) throw new Error('not a text page');
   const buf = await res.arrayBuffer();
-  return new TextDecoder('utf-8').decode(buf.slice(0, 600 * 1024));
+  return new TextDecoder('utf-8').decode(json ? buf : buf.slice(0, 600 * 1024));
 }
 
 // ---- search engines ----
@@ -83,31 +84,112 @@ async function duckDuckGo(q) {
   return out;
 }
 
+// Brave Search API: official, free plan, needs BRAVE_API_KEY
+async function brave(q) {
+  const key = process.env.BRAVE_API_KEY;
+  if (!key) return null;
+  const res = await fetch(`https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(q)}&freshness=pw&count=20`, {
+    headers: { Accept: 'application/json', 'X-Subscription-Token': key },
+    signal: AbortSignal.timeout(9000),
+  });
+  if (!res.ok) throw new Error(`${res.status}`);
+  const d = await res.json();
+  return (d.web?.results || []).map((r) => ({ url: r.url, snippet: `${r.title || ''} ${htmlToText(r.description || '')}` }));
+}
+
 async function search(q) {
-  try {
-    const g = await googleCse(q);
-    if (g) return g;
-  } catch (e) {
-    console.log(`Web hunt: Google search failed (${e.message}), using DuckDuckGo`);
+  for (const engine of [googleCse, brave]) {
+    try {
+      const r = await engine(q);
+      if (r) return r;
+    } catch (e) {
+      console.log(`Web hunt: ${engine.name} search failed (${e.message})`);
+    }
   }
   return duckDuckGo(q);
 }
 
-async function reddit() {
+// ---- public feeds and APIs (no scraping of protected pages) ----
+const WEEK_MS = 7 * 24 * 3600 * 1000;
+// people offering their own work are competitors, not clients
+const SEEKER = /#getfedihired|#opentowork|open to work|available for (?:hire|work|freelance)|(?:i am|i'm|i’m) (?:a |an )?[\w .+/-]{0,40}(?:developer|engineer|designer)[^.]{0,80}(?:available|for hire|hire me|looking for)|hire me|seeking (?:work|employment|a job)|looking for (?:a )?(?:job|work|new role|opportunit)|my (?:portfolio|resume|cv)\b/i;
+
+const MASTODON = ['mastodon.social', 'fosstodon.org', 'hachyderm.io', 'mastodon.online', 'techhub.social'];
+const MASTODON_TAGS = ['hiring', 'freelance', 'devjobs', 'jobopening', 'remotework', 'webdev', 'jobs'];
+
+async function mastodon() {
   const out = [];
-  for (const sub of ['forhire', 'hiring']) {
-    try {
-      const d = JSON.parse(await fetchText(`https://www.reddit.com/r/${sub}/new.json?limit=100&raw_json=1`, { json: true }));
-      for (const c of d.data?.children || []) {
-        const p = c.data;
-        if (!p || !/\[hiring\]|hiring/i.test(p.link_flair_text || p.title || '')) continue;
-        out.push({ url: `https://www.reddit.com${p.permalink}`, text: `${p.title}. ${p.selftext || ''}` });
+  for (const host of MASTODON) {
+    for (const tag of MASTODON_TAGS) {
+      try {
+        const posts = JSON.parse(await fetchText(`https://${host}/api/v1/timelines/tag/${tag}?limit=40`, { json: true }));
+        for (const p of posts) {
+          if (!p.created_at || Date.now() - Date.parse(p.created_at) > WEEK_MS) continue;
+          out.push({ url: p.url, text: htmlToText(p.content || ''), label: 'Mastodon' });
+        }
+      } catch (e) {
+        console.log(`Web hunt: ${host} #${tag} skipped (${e.message})`);
       }
-    } catch (e) {
-      console.log(`Web hunt: r/${sub} skipped (${e.message})`);
+      await sleep(400);
     }
   }
   return out;
+}
+
+const HN_COMMENT_QUERIES = ['hiring freelance developer', 'looking for freelance developer', 'looking for a freelancer', 'need a developer contract', 'seeking freelancer', 'freelance react developer', 'freelance node developer', 'contract developer email'];
+async function hnComments() {
+  const out = [];
+  const since = Math.floor((Date.now() - WEEK_MS) / 1000);
+  for (const q of HN_COMMENT_QUERIES) {
+    try {
+      const d = JSON.parse(await fetchText(`https://hn.algolia.com/api/v1/search_by_date?query=${encodeURIComponent(q)}&tags=comment&numericFilters=created_at_i>${since}&hitsPerPage=50`, { json: true }));
+      for (const h of d.hits || []) out.push({ url: `https://news.ycombinator.com/item?id=${h.objectID}`, text: htmlToText(h.comment_text || ''), label: 'HN comments' });
+    } catch (e) {
+      console.log(`Web hunt: HN "${q}" skipped (${e.message})`);
+    }
+    await sleep(300);
+  }
+  return out;
+}
+
+async function devTo() {
+  const out = [];
+  for (const tag of ['hiring', 'freelance', 'jobs', 'remotework']) {
+    try {
+      const list = JSON.parse(await fetchText(`https://dev.to/api/articles?tag=${tag}&per_page=15&top=7`, { json: true }));
+      for (const a of list) {
+        const art = JSON.parse(await fetchText(`https://dev.to/api/articles/${a.id}`, { json: true }));
+        out.push({ url: a.url, text: htmlToText(`${a.title}. ${art.body_html || ''}`), label: 'DEV.to' });
+        await sleep(1200);
+      }
+    } catch (e) {
+      console.log(`Web hunt: DEV.to #${tag} skipped (${e.message})`);
+      if (/429/.test(e.message)) break; // rate limited: stop and try again at the next run
+    }
+    await sleep(1500);
+  }
+  return out;
+}
+
+// GitHub issues and discussions asking for a freelance developer (public search API, 10 requests/min without a token)
+async function github() {
+  const out = [];
+  const since = new Date(Date.now() - WEEK_MS).toISOString().slice(0, 10);
+  for (const q of ['"looking for" freelance developer', 'hiring freelance developer', 'need developer contract paid']) {
+    try {
+      const d = JSON.parse(await fetchText(`https://api.github.com/search/issues?q=${encodeURIComponent(`${q} in:title,body created:>${since} is:open`)}&per_page=30&sort=created`, { json: true }));
+      for (const i of d.items || []) out.push({ url: i.html_url, text: `${i.title}. ${i.body || ''}`, label: 'GitHub' });
+    } catch (e) {
+      console.log(`Web hunt: GitHub "${q}" skipped (${e.message})`);
+    }
+    await sleep(7000);
+  }
+  return out;
+}
+
+async function feeds() {
+  const settled = await Promise.allSettled([mastodon(), hnComments(), devTo(), github()]);
+  return settled.flatMap((r) => (r.status === 'fulfilled' ? r.value : [])).filter((i) => i.url && i.text && !SEEKER.test(i.text));
 }
 
 // the text around the first email, enough for the tailor to judge the role
@@ -129,7 +211,7 @@ export async function huntWeb(matchers, state) {
   const queries = [...pool].sort(() => Math.random() - 0.5).slice(0, MAX_QUERIES_PER_RUN);
 
   const pages = new Map(); // url -> {snippet, text}
-  for (const r of await reddit()) pages.set(r.url, { text: r.text, label: 'Reddit hiring' });
+  for (const r of await feeds()) if (!pages.has(r.url)) pages.set(r.url, { text: r.text, label: r.label });
 
   for (const q of queries) {
     try {
@@ -173,4 +255,16 @@ export async function huntWeb(matchers, state) {
     );
     await sleep(500);
   }
+}
+
+// Counts only, nothing is queued: which sources give pages with a contact email right now
+export async function previewFeeds() {
+  const items = await feeds();
+  const by = {};
+  for (const i of items) {
+    const b = (by[i.label] ||= { items: 0, withEmail: 0 });
+    b.items++;
+    if (pickEmails(i.text).length && HIRING_WORDS.test(i.text)) b.withEmail++;
+  }
+  return by;
 }
