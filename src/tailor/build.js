@@ -111,7 +111,7 @@ export function buildContent(a, who = {}) {
       '',
       `You can see my work here: https://${MASTER.portfolio}`,
       '',
-      'I can start right away and work remotely. If you share a short brief (scope, timeline and budget), I will reply with an estimate and a plan. Rates depend on the project, I am happy to discuss them.',
+      `I can start right away and work remotely${a.region ? `, and I am happy to align my working hours with ${a.region}` : ''}. If you share a short brief (scope, timeline and budget), I will reply with an estimate and a plan. Rates depend on the project, I am happy to discuss them.`,
       '',
       'Thank you for your time.',
       '',

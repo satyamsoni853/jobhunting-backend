@@ -19,6 +19,7 @@ const SKIP_EMAIL = /\.(png|jpe?g|gif|svg|webp)$/i;
 // Words that make a posting match a selected category
 const CATEGORY_WORDS = {
   freelancing: /freelanc|contract(or)?\b|part[- ]time/i,
+  foreign: /dubai|uae|abu dhabi|saudi|qatar|canada|canadian|toronto|vancouver|montreal|japan|tokyo|singapore|australia|sydney|melbourne|uk|london|germany|berlin|netherlands|usa|united states|europe|offshore|worldwide/i,
   frontend: /front[- ]?end|react|vue|angular|next\.?js|javascript|typescript|\bui\b/i,
   backend: /back[- ]?end|node(\.?js)?|express|python|django|golang|\bgo\b|java\b|php|laravel|\bapi\b/i,
   fullstack: /full[- ]?stack|mern|mean\b/i,

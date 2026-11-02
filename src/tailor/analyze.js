@@ -145,6 +145,7 @@ export function analyzePost(rawText) {
     senior,
     junior,
     signals,
+    region: /dubai|uae|abu dhabi/i.test(rawText) ? 'Dubai time' : /canada|toronto|vancouver|montreal/i.test(rawText) ? 'Canadian time' : /japan|tokyo|osaka/i.test(rawText) ? 'Japan time' : '',
     reasons,
     scores: scores.filter(([, s]) => s > 0).sort((a, b) => b[1] - a[1]).slice(0, 4),
   };
