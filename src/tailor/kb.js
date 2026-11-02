@@ -154,6 +154,8 @@ export const MY_YEARS = 2;
 // Signals picked up from the post
 export const SIGNALS = {
   remote: /\bremote\b|work from home|\bwfh\b|anywhere/i,
+  // the post wants a freelancer or project work, so the mail is a freelance pitch and not a job application
+  freelance: /freelanc|contract (?:developer|basis|role|work|position|project)|project[- ]basis|short[- ]term project|one[- ]off project|\bgig\b|seeking freelancer/i,
   immediate: /immediate(?:ly)? (?:joiner|join|start)|join(?:ing)? immediately|asap|urgent(?:ly)? (?:hiring|required|need)/i,
   // jobs open only to people in a region that does not include India
   regionLock: /\b(?:us|usa|u\.s\.|united states|north america|americas|eu|europe|uk|canada|australia)\s*(?:only|based|residents?|citizens?|time ?zones?)|remote\s*\((?:us|usa|u\.s\.|americas|eu|europe|uk|canada|north america)|must (?:be )?(?:based|located|reside) in|(?:us|eu|uk)\s*\/\s*(?:eu|us|uk)[- ]overlap|(?:eu|us|uk)[- ]overlap|work authori[sz]ation|right to work/i,

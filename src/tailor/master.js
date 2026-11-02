@@ -7,6 +7,7 @@ export const MASTER = {
   email: 'satyam.soni1312@gmail.com',
   linkedin: 'linkedin.com/in/satyam-soni-833873293',
   github: 'github.com/satyamsoni853',
+  portfolio: 'satyam-soni-video.vercel.app',
 
   // Summary sentence per role. `default` is the full stack one.
   summaries: {

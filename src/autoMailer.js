@@ -185,7 +185,8 @@ async function sendFirst(job, c) {
     }
     subject = t.subject;
     text = t.body;
-    attachments = [{ filename: name, content: await renderPdf(t.content) }];
+    // freelance pitch: portfolio link in the mail, no resume attached
+    attachments = t.content.freelancePitch ? [] : [{ filename: name, content: await renderPdf(t.content) }];
     tailored = { role: a.roleLabel, fit: a.fit, matched: a.matched.slice(0, 6) };
     role = a.roleLabel;
   }

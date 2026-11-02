@@ -96,6 +96,34 @@ export function buildContent(a, who = {}) {
     roleId === 'freelance'
       ? `I am writing to offer my help on freelance and contract projects. I am a Full Stack Developer with hands-on experience in ${list(top)}.`
       : `I am writing to apply for the ${a.roleLabel} role${company ? ` at ${company}` : ''}. I am a Full Stack Developer with hands-on experience in ${list(top)}.`;
+  // Freelance posts get a short project pitch with the portfolio link, no resume and no job-application wording
+  if (a.signals.freelance || roleId === 'freelance') {
+    const stack = list(top);
+    const pitchSubject = company
+      ? `Freelance developer for ${company} (${top.slice(0, 2).join(', ')}) - ${MASTER.name}`
+      : `Freelance ${a.roleLabel} available (${top.slice(0, 3).join(', ')}) - ${MASTER.name}`;
+    const pitchBody = [
+      greeting({ person, company }),
+      '',
+      `I saw your post about needing a freelancer. I am a Full Stack Developer and I take on project-based work with ${stack}.`,
+      '',
+      fact,
+      '',
+      `You can see my work here: https://${MASTER.portfolio}`,
+      '',
+      'I can start right away and work remotely. If you share a short brief (scope, timeline and budget), I will reply with an estimate and a plan. Rates depend on the project, I am happy to discuss them.',
+      '',
+      'Thank you for your time.',
+      '',
+      'Best regards,',
+      MASTER.name,
+      `Portfolio: https://${MASTER.portfolio}`,
+      `LinkedIn: https://www.${MASTER.linkedin}/`,
+      `GitHub: https://${MASTER.github}`,
+    ].join('\n');
+    return { title, summary, groups, experience, projects, subject: pitchSubject, body: pitchBody, freelancePitch: true };
+  }
+
   const closing = `My resume is attached, arranged for this role. I am available to join immediately${a.signals.remote ? ' and comfortable working remotely' : ''}, and happy to share more details or take a technical round at your convenience.`;
 
   const body = [
