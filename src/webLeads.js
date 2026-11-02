@@ -109,7 +109,10 @@ async function search(q, fresh = true) {
       console.log(`Web hunt: ${engine.name} search failed (${e.message})`);
     }
   }
-  return duckDuckGo(q);
+  if (!process.env.BRAVE_API_KEY && !(process.env.GOOGLE_CSE_KEY && process.env.GOOGLE_CSE_CX)) console.log('Web hunt: no search key set (BRAVE_API_KEY), using DuckDuckGo only');
+  const ddg = await duckDuckGo(q);
+  if (!ddg.length) console.log(`Web hunt: DuckDuckGo gave no results for "${q}" (probably blocked)`);
+  return ddg;
 }
 
 // ---- public feeds and APIs (no scraping of protected pages) ----
@@ -289,7 +292,10 @@ export async function huntAgencies(state) {
     }
     await sleep(1500);
   }
-  if (!sites.size) return; // no search key or no results: try again at the next hunt
+  if (!sites.size) {
+    console.log('Agency hunt: the search found no sites (is BRAVE_API_KEY set and valid?), will try again at the next hunt');
+    return;
+  }
   agencyDay = day;
   const pitch = agencyPitch();
   let queued = 0;
@@ -345,6 +351,7 @@ export async function huntWeb(matchers, state) {
     await sleep(1500);
   }
 
+  console.log(`Web hunt: ${pages.size} pages and posts to read from ${queries.length} searches and the feeds`);
   let fetched = 0;
   const entries = [...pages.entries()];
   for (let i = 0; i < entries.length && fetched < MAX_PAGES_PER_RUN; i += 4) {
