@@ -3,6 +3,7 @@ import { selectedQueries, JOB_CATEGORIES } from './searchKeywords.js';
 import { GROUP_NAME_RE } from './blocklist.js';
 import { addManual } from './manualLeads.js';
 import { tailorResume, minFit } from './tailor/index.js';
+import { agencyPitch } from './tailor/agency.js';
 
 // Web lead hunter: finds fresh public posts and pages that carry a contact email.
 //  1. Google Custom Search (free 100 queries/day) when GOOGLE_CSE_KEY + GOOGLE_CSE_CX are set, results from the past week.
@@ -14,7 +15,7 @@ import { tailorResume, minFit } from './tailor/index.js';
 const UA = 'Mozilla/5.0 (compatible; jobhunting-bot; personal freelance search)';
 const EMAIL_RE = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)*\.[a-zA-Z]{2,}/g;
 const BAD_EMAIL = /(no-?reply|do-?not-?reply|donotreply|example\.|sentry|wixpress|@2x|\.(png|jpe?g|gif|svg|webp|css|js)$|^user@|^name@|^email@|^you@|^your)/i;
-const SKIP_HOST = /(^|\.)(linkedin\.com|facebook\.com|instagram\.com|youtube\.com|google\.[a-z.]+|twitter\.com|x\.com|pinterest\.com|tiktok\.com|upwork\.com|freelancer\.com|indeed\.com|glassdoor\.com)$/i;
+const SKIP_HOST = /(^|\.)(linkedin\.com|facebook\.com|instagram\.com|youtube\.com|google\.[a-z.]+|twitter\.com|x\.com|pinterest\.com|tiktok\.com|upwork\.com|freelancer\.com|indeed\.com|glassdoor\.com|clutch\.co|goodfirms\.co|designrush\.com|sortlist\.com|crunchbase\.com|wikipedia\.org|yelp\.com|medium\.com|quora\.com)$/i;
 const PRIVATE_HOST = /^(localhost|127\.|10\.|0\.|192\.168\.|169\.254\.|172\.(1[6-9]|2\d|3[01])\.)|\.(local|internal)$|:/i;
 const HIRING_WORDS = /hiring|looking for|we need|i need|need(?:ed)? (?:a|an)\b|seeking|wanted|vacanc|opening|freelanc|contract|project|apply|send (?:your )?(?:resume|cv|portfolio)/i;
 
@@ -62,11 +63,11 @@ async function fetchText(url, { json = false } = {}) {
 }
 
 // ---- search engines ----
-async function googleCse(q) {
+async function googleCse(q, fresh = true) {
   const key = process.env.GOOGLE_CSE_KEY;
   const cx = process.env.GOOGLE_CSE_CX;
   if (!key || !cx) return null; // not configured
-  const url = `https://www.googleapis.com/customsearch/v1?key=${encodeURIComponent(key)}&cx=${encodeURIComponent(cx)}&q=${encodeURIComponent(q)}&dateRestrict=w1&num=10`;
+  const url = `https://www.googleapis.com/customsearch/v1?key=${encodeURIComponent(key)}&cx=${encodeURIComponent(cx)}&q=${encodeURIComponent(q)}${fresh ? '&dateRestrict=w1' : ''}&num=10`;
   const d = JSON.parse(await fetchText(url, { json: true }));
   return (d.items || []).map((i) => ({ url: i.link, snippet: `${i.title || ''} ${i.snippet || ''}` }));
 }
@@ -87,10 +88,10 @@ async function duckDuckGo(q) {
 }
 
 // Brave Search API: official, free plan, needs BRAVE_API_KEY
-async function brave(q) {
+async function brave(q, fresh = true) {
   const key = process.env.BRAVE_API_KEY;
   if (!key) return null;
-  const res = await fetch(`https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(q)}&freshness=pw&count=20`, {
+  const res = await fetch(`https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(q)}${fresh ? '&freshness=pw' : ''}&count=20`, {
     headers: { Accept: 'application/json', 'X-Subscription-Token': key },
     signal: AbortSignal.timeout(9000),
   });
@@ -99,10 +100,10 @@ async function brave(q) {
   return (d.web?.results || []).map((r) => ({ url: r.url, snippet: `${r.title || ''} ${htmlToText(r.description || '')}` }));
 }
 
-async function search(q) {
+async function search(q, fresh = true) {
   for (const engine of [googleCse, brave]) {
     try {
-      const r = await engine(q);
+      const r = await engine(q, fresh);
       if (r) return r;
     } catch (e) {
       console.log(`Web hunt: ${engine.name} search failed (${e.message})`);
@@ -252,6 +253,62 @@ export async function emailsForPost(text, url, source, state) {
   }
   offerManual(url, source, text, state);
   return [];
+}
+
+
+// ---- agency outreach: companies that may need a freelancer but have posted nothing ----
+// Once a day (first hunt after midnight India time): search web design / software agencies and startups in the focus regions,
+// read the public contact emails from their own website, and queue one short offer each. Off with AGENCY_OUTREACH=false.
+const AGENCY_QUERIES = [
+  'web development agency dubai', 'software development company dubai', 'digital agency abu dhabi', 'web design company uae',
+  'web development agency toronto', 'software company vancouver', 'digital agency calgary', 'web design agency canada',
+  'web development company tokyo', 'software development company japan english', 'digital agency osaka',
+  'web development agency singapore', 'software company sydney', 'web design agency melbourne',
+  'web development agency london', 'software development company berlin', 'digital agency amsterdam',
+  'web development agency doha qatar', 'software company riyadh saudi arabia', 'startup studio dubai',
+];
+let agencyDay = '';
+
+export async function huntAgencies(state) {
+  if (process.env.AGENCY_OUTREACH === 'false') return;
+  const day = new Date(Date.now() + 5.5 * 3600 * 1000).toISOString().slice(0, 10);
+  if (day === agencyDay) return;
+  const cap = Number(process.env.AGENCY_PER_DAY) || 10;
+  const queries = [...AGENCY_QUERIES].sort(() => Math.random() - 0.5).slice(0, 5);
+  const sites = new Map();
+  for (const q of queries) {
+    try {
+      for (const h of await search(q, false)) {
+        const url = safeUrl(h.url);
+        if (!url) continue;
+        const origin = new URL(url).origin;
+        if (!sites.has(origin)) sites.set(origin, q);
+      }
+    } catch (e) {
+      console.log(`Agency hunt: search "${q}" failed (${e.message})`);
+    }
+    await sleep(1500);
+  }
+  if (!sites.size) return; // no search key or no results: try again at the next hunt
+  agencyDay = day;
+  const pitch = agencyPitch();
+  let queued = 0;
+  for (const [origin, q] of sites) {
+    if (queued >= cap) break;
+    try {
+      const emails = await siteEmails(origin);
+      if (!emails.length) continue;
+      state.scanned++;
+      state.matched++;
+      const r = enqueueEmails(emails.slice(0, 1), `Agency outreach: ${q}`, origin, '', {}, { subject: pitch.subject, body: pitch.body });
+      if (r.error) throw new Error(r.error);
+      queued += r.accepted || 0;
+      state.queued += r.accepted || 0;
+    } catch (e) {
+      if (/Sender Gmail/.test(e.message)) throw e;
+    }
+  }
+  console.log(`Agency hunt: ${sites.size} sites looked at, ${queued} queued`);
 }
 
 // the text around the first email, enough for the tailor to judge the role

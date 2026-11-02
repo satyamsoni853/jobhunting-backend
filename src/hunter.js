@@ -1,7 +1,7 @@
 import { enqueueEmails } from './autoMailer.js';
 import { loadSelection } from './searchKeywords.js';
 import { GROUP_NAME_RE } from './blocklist.js';
-import { huntWeb, emailsForPost } from './webLeads.js';
+import { huntWeb, emailsForPost, huntAgencies } from './webLeads.js';
 
 // Server-side lead hunter. Source: the monthly Hacker News "Who is hiring?" thread (public Algolia API),
 // where recruiters post an email to apply to. Job boards like RemoteOK/WWR only give apply links, no emails.
@@ -99,6 +99,7 @@ async function runHunt() {
   // Fresh public pages and posts with an email (Google/DuckDuckGo search, Reddit). A failure here never hides the HN result.
   try {
     await huntWeb(matchers, state);
+    await huntAgencies(state);
   } catch (e) {
     console.error('Web hunt failed:', e.message);
     if (!found) throw e;
