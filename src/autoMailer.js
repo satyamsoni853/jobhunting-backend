@@ -63,6 +63,12 @@ const cancelled = new Set();
 const persistCancelled = () => {
   if (dbEnabled()) setKv('cancelled', JSON.stringify([...cancelled]));
 };
+// The cancelled jobs themselves (post text included) are kept, so "Un-cancel" can put them back exactly as they were
+const cancelledJobs = new Map();
+const persistCancelledJobs = () => {
+  while (cancelledJobs.size > 200) cancelledJobs.delete(cancelledJobs.keys().next().value);
+  if (dbEnabled()) setKv('cancelledJobs', JSON.stringify([...cancelledJobs.values()]));
+};
 
 export async function initQueue() {
   if (!dbEnabled()) return 0;
@@ -71,6 +77,7 @@ export async function initQueue() {
     // addresses mailed before the leads book existed are added to it once
     for (const r of store.all()) if (!leads.has(r.email) && (r.sends || []).length) track(r.email, { status: 'sent', firstSeen: r.at, sentAt: r.sends.at(-1), subject: r.subject, role: r.role, company: r.company, postUrl: r.postUrl, firstTime: true });
     for (const e of JSON.parse((await getKv('cancelled')) || '[]')) cancelled.add(e);
+    for (const j of JSON.parse((await getKv('cancelledJobs')) || '[]')) cancelledJobs.set(j.email, j);
     history.push(...JSON.parse((await getKv('history')) || '[]'));
   } catch {
     /* an unreadable copy is just ignored */
@@ -168,7 +175,9 @@ async function sendFirst(job, c) {
   let attachments = await resumeAttachment();
   let tailored = null;
   let role = '';
-  const who = { company: job.company, person: job.person };
+  // two pitch versions (A and B) alternate by address, so the reply rate of each can be compared later
+  const variant = [...email].reduce((n, ch) => n + ch.charCodeAt(0), 0) % 2 ? 'B' : 'A';
+  const who = { company: job.company, person: job.person, variant };
   text = text.replace(/^Dear Hiring Team,/, greeting(who));
   subject = subjectAtCompany(subject, job.company);
 
@@ -205,6 +214,7 @@ async function sendFirst(job, c) {
     company: job.company || '',
     person: job.person || '',
     tz: job.tz ?? null,
+    variant: tailored ? variant : '',
     postUrl: job.postUrl || '',
     messageId: info.messageId,
     threadId: info.threadId || '',
@@ -236,6 +246,23 @@ async function sendFollowUp(job, c) {
   return true;
 }
 
+// Where a lead came from, as shown in the summary
+function sourceLabel(l) {
+  if (/linkedin\.com/i.test(l.postUrl || '')) return 'LinkedIn';
+  const m = String(l.query || '').match(/^(HN [\w ]+|HN comments|Mastodon|DEV\.to|GitHub|Web search)/);
+  return m ? m[1] : 'Other';
+}
+
+// Bounce rate of the mails first sent in the last 3 days. Needs 20 mails before it judges. BOUNCE_PAUSE_RATE (default 0.08) is the limit.
+function bounceStats() {
+  const cutoff = new Date(Date.now() - 3 * 24 * HOUR).toISOString();
+  const recent = store.all().filter((r) => (r.sends || [])[0] >= cutoff);
+  const bounced = recent.filter((r) => r.bounced).length;
+  const limit = Number(process.env.BOUNCE_PAUSE_RATE || 0.08);
+  const rate = recent.length ? bounced / recent.length : 0;
+  return { contacted: recent.length, bounced, rate, limit, paused: recent.length >= 20 && rate >= limit };
+}
+
 async function work() {
   if (working) return;
   working = true;
@@ -244,6 +271,13 @@ async function work() {
   const ready = (j) => j.force || !c.tzAware || inBusinessHours(j.tz) || Date.now() - j.queuedAt > 72 * HOUR;
 
   while (queue.length) {
+    // Many bounces hurt the Gmail account: sending stops until the bounce rate of the last 3 days is back under the limit
+    const b = bounceStats();
+    if (b.paused) {
+      console.log(`⏸️ Sending paused: ${b.bounced} of ${b.contacted} mails of the last 3 days bounced (${Math.round(b.rate * 100)}%).`);
+      await sleep(30 * 60 * 1000);
+      continue;
+    }
     if (store.sentToday() >= c.dailyLimit) {
       console.log(`⏸️ Daily limit (${c.dailyLimit}) reached, ${queue.length} mails wait for tomorrow.`);
       await sleep(30 * 60 * 1000);
@@ -441,6 +475,50 @@ export function registerAutoMailer(app) {
     });
   });
 
+  // Replies and bounces per source and per pitch version, from everything ever sent
+  function performance() {
+    const bySource = {};
+    const byVariant = {};
+    for (const r of store.all()) {
+      if (!(r.sends || []).length) continue;
+      const add = (map, k) => {
+        const x = (map[k] ||= { sent: 0, replied: 0, bounced: 0 });
+        x.sent++;
+        if (r.replied) x.replied++;
+        if (r.bounced) x.bounced++;
+      };
+      add(bySource, leads.get(r.email) ? sourceLabel(leads.get(r.email)) : 'Other');
+      if (r.variant) add(byVariant, r.variant);
+    }
+    return { bySource, byVariant };
+  }
+
+  // The last 24 hours in one block: new leads by source, mails sent, replies, skips
+  function todaySummary(sinceMs) {
+    const isNew = (t) => Boolean(t) && new Date(t).getTime() >= sinceMs;
+    const label = sourceLabel;
+    const newBySource = {};
+    let newLeads = 0;
+    let skipped = 0;
+    for (const l of leads.values()) {
+      if (!isNew(l.firstSeen)) continue;
+      newLeads++;
+      newBySource[label(l)] = (newBySource[label(l)] || 0) + 1;
+      if (l.status === 'skipped') skipped++;
+    }
+    const recs = store.all();
+    return {
+      newLeads,
+      newBySource,
+      skipped,
+      sent: store.sentToday(),
+      replied: recs.filter((r) => isNew(r.repliedAt)).length,
+      bouncedTotal: recs.filter((r) => r.bounced).length,
+      repliedTotal: recs.filter((r) => r.replied).length,
+      waiting: queue.length,
+    };
+  }
+
   // Everything the website's mail list shows: waiting, sent, skipped and failed
   app.get('/api/mail/overview', auth, (req, res) => {
     const c = cfg();
@@ -504,6 +582,7 @@ export function registerAutoMailer(app) {
       queue.splice(i, 1);
       queued.delete(`${j.type}:${j.email}`);
       if (j.type === 'first') {
+        cancelledJobs.set(j.email, j);
         cancelled.add(j.email);
         mark(j.email, { status: 'cancelled' });
       }
@@ -512,7 +591,38 @@ export function registerAutoMailer(app) {
     }
     persistQueue();
     persistCancelled();
+    persistCancelledJobs();
     res.json({ cancelled: n, queueLength: queue.length });
+  });
+
+  // Put cancelled mails back in the waiting list. { emails: [...] }
+  app.post('/api/mail/uncancel', auth, (req, res) => {
+    const emails = ((req.body || {}).emails || []).map((e) => String(e).trim().toLowerCase());
+    let restored = 0;
+    const missing = [];
+    for (const email of emails) {
+      if (!cancelled.has(email)) continue;
+      const job = cancelledJobs.get(email);
+      if (!job) {
+        missing.push(email); // cancelled before the post was kept: only a new post with this address can bring it back
+        cancelled.delete(email);
+        mark(email, { status: 'new' });
+        continue;
+      }
+      cancelled.delete(email);
+      cancelledJobs.delete(email);
+      if (!queued.has(`first:${email}`) && !store.has(email)) {
+        queue.push({ ...job, force: false, queuedAt: Date.now() });
+        queued.add(`first:${email}`);
+        mark(email, { status: 'queued' });
+        restored++;
+      }
+    }
+    persistQueue();
+    persistCancelled();
+    persistCancelledJobs();
+    if (wake) wake();
+    res.json({ restored, missing, queueLength: queue.length });
   });
 
   // Skip the wait for the recruiter's office hours for one mail
@@ -530,6 +640,9 @@ export function registerAutoMailer(app) {
   app.get('/api/auto-status', auth, (req, res) => {
     const c = cfg();
     res.json({
+      bounce: bounceStats(),
+      today: todaySummary(Date.now() - 24 * 60 * 60 * 1000),
+      performance: performance(),
       queueLength: queue.length,
       queuedFollowUps: queue.filter((j) => j.type === 'followup').length,
       sentToday: store.sentToday(),

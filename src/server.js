@@ -7,6 +7,8 @@ import multer from 'multer';
 import { registerAutoMailer, requireKey } from './autoMailer.js';
 import { registerSearchRoutes } from './searchKeywords.js';
 import { registerHunter } from './hunter.js';
+import { registerManual, initManual } from './manualLeads.js';
+import { buildProposal } from './tailor/proposal.js';
 import { registerProfile } from './profile.js';
 import { registerOtp, requireProfileToken } from './otp.js';
 import { registerSatyamSend } from './satyamSend.js';
@@ -196,6 +198,12 @@ app.post('/api/send-emails', upload.single('resume'), async (req, res) => {
 registerAutoMailer(app);
 registerSearchRoutes(app, requireKey);
 registerHunter(app, requireKey);
+registerManual(app, requireKey);
+// Bid text for a freelance project (text in, text out, nothing is sent anywhere)
+app.post('/api/proposal', (req, res) => {
+  const b = req.body || {};
+  res.json({ text: buildProposal({ title: String(b.title || '').slice(0, 300), text: String(b.text || '').slice(0, 6000), budget: String(b.budget || '').slice(0, 60) }) });
+});
 registerOtp(app);
 registerProfile(app, requireProfileToken);
 registerSatyamSend(app, requireProfileToken);
@@ -222,6 +230,7 @@ try {
     await initSmtp();
     await initSelection();
     await initQueue();
+    await initManual();
   }
   await initGoogle();
 } catch (e) {

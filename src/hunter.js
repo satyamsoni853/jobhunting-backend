@@ -1,7 +1,7 @@
 import { enqueueEmails } from './autoMailer.js';
 import { loadSelection } from './searchKeywords.js';
 import { GROUP_NAME_RE } from './blocklist.js';
-import { huntWeb } from './webLeads.js';
+import { huntWeb, emailsForPost } from './webLeads.js';
 
 // Server-side lead hunter. Source: the monthly Hacker News "Who is hiring?" thread (public Algolia API),
 // where recruiters post an email to apply to. Job boards like RemoteOK/WWR only give apply links, no emails.
@@ -86,7 +86,9 @@ async function runHunt() {
       if (src.only && !src.only.test(text)) continue; // freelancer thread: keep employers, skip people seeking work
       if (GROUP_NAME_RE.test(text)) continue; // never apply to the user's own employer group
       if (!matchers.some((re) => re.test(text))) continue;
-      const emails = (text.match(EMAIL_RE) || []).filter((e) => !SKIP_EMAIL.test(e));
+      let emails = (text.match(EMAIL_RE) || []).filter((e) => !SKIP_EMAIL.test(e));
+      // no email in the post: try the company website, else it goes to the "reach out by hand" list
+      if (!emails.length) emails = await emailsForPost(text, `https://news.ycombinator.com/item?id=${post.id}`, src.label, state);
       if (!emails.length) continue;
       state.matched++;
       const result = enqueueEmails(emails, src.label, `https://news.ycombinator.com/item?id=${post.id}`, text);

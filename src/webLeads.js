@@ -1,6 +1,8 @@
 import { enqueueEmails } from './autoMailer.js';
 import { selectedQueries, JOB_CATEGORIES } from './searchKeywords.js';
 import { GROUP_NAME_RE } from './blocklist.js';
+import { addManual } from './manualLeads.js';
+import { tailorResume, minFit } from './tailor/index.js';
 
 // Web lead hunter: finds fresh public posts and pages that carry a contact email.
 //  1. Google Custom Search (free 100 queries/day) when GOOGLE_CSE_KEY + GOOGLE_CSE_CX are set, results from the past week.
@@ -114,8 +116,8 @@ const WEEK_MS = 7 * 24 * 3600 * 1000;
 // people offering their own work are competitors, not clients
 const SEEKER = /#getfedihired|#opentowork|open to work|available for (?:hire|work|freelance)|(?:i am|i'm|i’m) (?:a |an )?[\w .+/-]{0,40}(?:developer|engineer|designer)[^.]{0,80}(?:available|for hire|hire me|looking for)|hire me|seeking (?:work|employment|a job)|looking for (?:a )?(?:job|work|new role|opportunit)|my (?:portfolio|resume|cv)\b/i;
 
-const MASTODON = ['mastodon.social', 'fosstodon.org', 'hachyderm.io', 'mastodon.online', 'techhub.social'];
-const MASTODON_TAGS = ['hiring', 'freelance', 'devjobs', 'jobopening', 'remotework', 'webdev', 'jobs'];
+const MASTODON = ['mastodon.social', 'fosstodon.org', 'hachyderm.io', 'mastodon.online', 'techhub.social', 'mas.to', 'mstdn.social', 'indieweb.social'];
+const MASTODON_TAGS = ['hiring', 'freelance', 'devjobs', 'jobopening', 'remotework', 'webdev', 'jobs', 'freelancer', 'remotejobs', 'contractwork', 'hireadeveloper', 'wordpress'];
 
 async function mastodon() {
   const out = [];
@@ -192,6 +194,66 @@ async function feeds() {
   return settled.flatMap((r) => (r.status === 'fulfilled' ? r.value : [])).filter((i) => i.url && i.text && !SEEKER.test(i.text));
 }
 
+
+// ---- company website: a post with a link but no email ----
+const LINK_RE = /https?:\/\/[^\s<>"')\]]+/g;
+const SOCIAL = /(^|\.)(linkedin|facebook|instagram|twitter|x|youtube|github|reddit|medium|t|wa|discord|bit|lnkd|goo|forms\.gle|docs\.google|notion|calendly|mastodon|news\.ycombinator)\./i;
+const SITE_PAGES = ['', '/contact', '/contact-us', '/about', '/careers'];
+const PREFERRED = /^(hr|jobs?|careers?|hiring|talent|recruit\w*|work|contact|hello|hi|info|team|office|admin|support)@/i;
+
+function companySite(text) {
+  for (const raw of text.match(LINK_RE) || []) {
+    const u = safeUrl(raw.replace(/[.,;]+$/, ''));
+    if (!u) continue;
+    const host = new URL(u).hostname.replace(/^www\./, '');
+    if (SOCIAL.test(host) || /\.(pdf|png|jpe?g)$/i.test(u)) continue;
+    return { origin: new URL(u).origin, host };
+  }
+  return null;
+}
+
+// Public contact addresses of the company that wrote the post: its own domain, from the home, contact, about and careers pages.
+// At most 3 are returned, role mailboxes (hr@, careers@, contact@, info@) first.
+export async function siteEmails(text) {
+  const site = companySite(text);
+  if (!site) return [];
+  const found = new Set();
+  for (const page of SITE_PAGES) {
+    try {
+      const html = await fetchText(site.origin + page);
+      const mailto = [...html.matchAll(/mailto:([^"'?>\s]+)/gi)].map((m) => decodeURIComponent(m[1]));
+      for (const e of [...mailto, ...(htmlToText(html).match(EMAIL_RE) || [])]) {
+        const email = e.toLowerCase();
+        if (!BAD_EMAIL.test(email) && email.split('@')[1]?.endsWith(site.host.split('.').slice(-2).join('.'))) found.add(email);
+      }
+    } catch {
+      /* page missing or blocked: try the next one */
+    }
+    if (found.size >= 3) break;
+    await sleep(400);
+  }
+  return [...found].sort((a, b) => Number(PREFERRED.test(b)) - Number(PREFERRED.test(a))).slice(0, 3);
+}
+
+// A post that fits but has no email at all goes to the owner's "reach out by hand" list
+export function offerManual(url, source, text, state) {
+  const fit = tailorResume(text).analysis.fit;
+  if (fit >= minFit() && addManual({ url, source, text })) state.manual = (state.manual || 0) + 1;
+}
+
+// Emails of a post, else of the company website (max 12 website lookups per run), else the manual list
+export async function emailsForPost(text, url, source, state) {
+  const direct = pickEmails(text);
+  if (direct.length) return direct;
+  if ((state.siteLookups || 0) < 12 && companySite(text) && tailorResume(text).analysis.fit >= minFit()) {
+    state.siteLookups = (state.siteLookups || 0) + 1;
+    const viaSite = await siteEmails(text);
+    if (viaSite.length) return viaSite;
+  }
+  offerManual(url, source, text, state);
+  return [];
+}
+
 // the text around the first email, enough for the tailor to judge the role
 function windowAround(text, email) {
   const i = text.toLowerCase().indexOf(email.toLowerCase());
@@ -242,7 +304,7 @@ export async function huntWeb(matchers, state) {
           state.scanned++;
           if (GROUP_NAME_RE.test(text)) return;
           if (!HIRING_WORDS.test(text) || !matchers.some((re) => re.test(text))) return;
-          const emails = pickEmails(text);
+          const emails = await emailsForPost(text, url, info.label, state);
           if (!emails.length) return;
           state.matched++;
           const result = enqueueEmails(emails, info.label, url, windowAround(text, emails[0]));

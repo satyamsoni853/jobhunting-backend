@@ -30,7 +30,7 @@ const relevance = (tags, matched) =>
 
 // who: { company, person }. The note greets the person (or the company team) and the subject and note name the company.
 export function buildContent(a, who = {}) {
-  const { company = '', person = '' } = typeof who === 'string' ? { company: who } : who;
+  const { company = '', person = '', variant = 'A' } = typeof who === 'string' ? { company: who } : who;
   const matched = a.matched;
   const roleId = a.roleId;
 
@@ -102,26 +102,39 @@ export function buildContent(a, who = {}) {
     const pitchSubject = company
       ? `Freelance developer for ${company} (${top.slice(0, 2).join(', ')}) - ${MASTER.name}`
       : `Freelance ${a.roleLabel} available (${top.slice(0, 3).join(', ')}) - ${MASTER.name}`;
-    const pitchBody = [
-      greeting({ person, company }),
-      '',
-      `I saw your post about needing a freelancer. I am a Full Stack Developer and I take on project-based work with ${stack}.`,
-      '',
-      fact,
-      '',
-      `You can see my work here: https://${MASTER.portfolio}`,
-      '',
-      `I can start right away and work remotely${a.region ? `, and I am happy to align my working hours with ${a.region}` : ''}. If you share a short brief (scope, timeline and budget), I will reply with an estimate and a plan. Rates depend on the project, I am happy to discuss them.`,
-      '',
-      'Thank you for your time.',
-      '',
-      'Best regards,',
-      MASTER.name,
-      `Portfolio: https://${MASTER.portfolio}`,
-      `LinkedIn: https://www.${MASTER.linkedin}/`,
-      `GitHub: https://${MASTER.github}`,
-    ].join('\n');
-    return { title, summary, groups, experience, projects, subject: pitchSubject, body: pitchBody, freelancePitch: true };
+    const rate = process.env.FREELANCE_RATE ? `My rate: ${process.env.FREELANCE_RATE}.` : 'Rates depend on the project, I am happy to discuss them.';
+    const hours = a.region ? `, and I am happy to align my working hours with ${a.region}` : '';
+    const signature = ['Best regards,', MASTER.name, `Portfolio: https://${MASTER.portfolio}`, `LinkedIn: https://www.${MASTER.linkedin}/`, `GitHub: https://${MASTER.github}`];
+    // Version A: full pitch. Version B: shorter, one question to answer.
+    const pitchBody =
+      variant === 'B'
+        ? [
+            greeting({ person, company }),
+            '',
+            `Saw your post about a freelancer. I build web apps with ${stack}, project-based and remote${hours}.`,
+            '',
+            `Some of my work: https://${MASTER.portfolio}`,
+            '',
+            `${rate} Could you share the scope and timeline? I will reply with a quick plan and estimate.`,
+            '',
+            ...signature,
+          ].join('\n')
+        : [
+            greeting({ person, company }),
+            '',
+            `I saw your post about needing a freelancer. I am a Full Stack Developer and I take on project-based work with ${stack}.`,
+            '',
+            fact,
+            '',
+            `You can see my work here: https://${MASTER.portfolio}`,
+            '',
+            `I can start right away and work remotely${hours}. If you share a short brief (scope, timeline and budget), I will reply with an estimate and a plan. ${rate}`,
+            '',
+            'Thank you for your time.',
+            '',
+            ...signature,
+          ].join('\n');
+    return { title, summary, groups, experience, projects, subject: pitchSubject, body: pitchBody, freelancePitch: true, variant };
   }
 
   const closing = `My resume is attached, arranged for this role. I am available to join immediately${a.signals.remote ? ' and comfortable working remotely' : ''}, and happy to share more details or take a technical round at your convenience.`;
