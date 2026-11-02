@@ -22,6 +22,19 @@ function autoHunt() {
   if (r.started) console.log('🔎 Auto-hunt started');
 }
 
+// Morning hunt: once every day from MORNING_HUNT_HOUR (India time, default 7) on, even if the server only wakes up later.
+// Checked every 10 minutes, so a restart or a late wake-up cannot skip the day.
+let lastMorning = '';
+function morningHunt() {
+  const ist = new Date(Date.now() + 5.5 * 3600 * 1000);
+  const day = ist.toISOString().slice(0, 10);
+  const hour = Number(process.env.MORNING_HUNT_HOUR ?? 7);
+  if (day === lastMorning || ist.getUTCHours() < hour) return;
+  lastMorning = day;
+  const r = startHunt();
+  console.log(r.started ? '🌅 Morning hunt started' : '🌅 Morning hunt skipped, a hunt is already running');
+}
+
 export function startScheduler() {
   if (started) return;
   const c = mailerConfig();
@@ -31,6 +44,8 @@ export function startScheduler() {
   setInterval(tick, 60 * 60 * 1000).unref();
   setTimeout(autoHunt, 3 * 60 * 1000).unref();
   setInterval(autoHunt, 3 * 60 * 60 * 1000).unref();
+  setTimeout(morningHunt, 4 * 60 * 1000).unref();
+  setInterval(morningHunt, 10 * 60 * 1000).unref();
 }
 
 export const runTickNow = tick;

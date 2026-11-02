@@ -1,0 +1,20 @@
+# Wakes the free Render server and keeps it awake, so the hunter, the mail queue and the scheduler run
+# even when nobody has the website open. GitHub may delay a run by a few minutes.
+name: keepalive
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping the server
+        run: |
+          for i in 1 2 3; do
+            code=$(curl -s -o /dev/null -m 90 -w '%{http_code}' https://jobhunting-backend.onrender.com/api/status || true)
+            echo "attempt $i: $code"
+            [ "$code" = "200" ] && exit 0
+            sleep 20
+          done
+          exit 0
