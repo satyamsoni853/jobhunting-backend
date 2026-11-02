@@ -102,9 +102,7 @@ export function buildContent(a, who = {}) {
     const pitchSubject = company
       ? `Freelance developer for ${company} (${top.slice(0, 2).join(', ')}) - ${MASTER.name}`
       : `Freelance ${a.roleLabel} available (${top.slice(0, 3).join(', ')}) - ${MASTER.name}`;
-    // Default rate set by the owner. FREELANCE_RATE on Render overrides it, and an empty value removes the rate line.
-    const rateText = process.env.FREELANCE_RATE ?? 'starting at $2 per hour';
-    const rate = rateText ? `My rate: ${rateText}.` : 'Rates depend on the project, I am happy to discuss them.';
+    // The owner does not want any rate, price or fee in a mail: nothing about money is stated by us.
     const hours = a.region ? `, and I am happy to align my working hours with ${a.region}` : '';
     const signature = ['Best regards,', MASTER.name, `Portfolio: https://${MASTER.portfolio}`, `LinkedIn: https://www.${MASTER.linkedin}/`, `GitHub: https://${MASTER.github}`];
     // Version A: full pitch. Version B: shorter, one question to answer.
@@ -117,7 +115,7 @@ export function buildContent(a, who = {}) {
             '',
             `Some of my work: https://${MASTER.portfolio}`,
             '',
-            `${rate} Could you share the scope and timeline? I will reply with a quick plan and estimate.`,
+            'Could you share the scope and timeline? I will reply with a quick plan and estimate.',
             '',
             ...signature,
           ].join('\n')
@@ -130,7 +128,7 @@ export function buildContent(a, who = {}) {
             '',
             `You can see my work here: https://${MASTER.portfolio}`,
             '',
-            `I can start right away and work remotely${hours}. If you share a short brief (scope, timeline and budget), I will reply with an estimate and a plan. ${rate}`,
+            `I can start right away and work remotely${hours}. If you share a short brief (scope, timeline and budget), I will reply with an estimate and a plan.`,
             '',
             'Thank you for your time.',
             '',
