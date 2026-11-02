@@ -272,41 +272,124 @@ const AGENCY_QUERIES = [
 ];
 let agencyDay = '';
 
+const AGENCY_CITIES = ['Dubai', 'Abu Dhabi', 'Toronto', 'Vancouver', 'Calgary', 'Tokyo', 'Osaka', 'Singapore', 'Sydney', 'Melbourne', 'London', 'Berlin', 'Amsterdam', 'Doha', 'Riyadh'];
+const AGENCY_NAME = /web|software|digital|tech|\bapp|\bit\b|solutions|systems|studio|agency|labs|dev|cloud|data|media|design|creative|interactive|infotech/i;
+const CONSUMER_MAIL = /@(gmail|yahoo|hotmail|outlook|live|icloud|rogers|bell|shaw|telus|aol|proton|protonmail)\./i;
+const OSM_UA = 'jobhunting-bot (personal freelance outreach; github.com/satyamsoni853)';
+
+// Free source 1: OpenStreetMap (Overpass API). IT, web design and software offices of a city that list a public email.
+export async function osmAgencies(city) {
+  const q = `[out:json][timeout:40];
+area["name:en"="${city}"]["boundary"="administrative"]->.a;
+(
+  nwr["office"~"^(it|company|web_design|advertising|software)$"]["email"](area.a);
+  nwr["craft"="web_design"]["email"](area.a);
+  nwr["office"~"^(it|company|web_design|advertising|software)$"]["contact:email"](area.a);
+);
+out tags 300;`;
+  const res = await fetch('https://overpass-api.de/api/interpreter', {
+    method: 'POST',
+    headers: { 'User-Agent': OSM_UA, 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: `data=${encodeURIComponent(q)}`,
+    signal: AbortSignal.timeout(60000),
+  });
+  if (!res.ok) throw new Error(`Overpass ${res.status}`);
+  const d = await res.json();
+  const out = [];
+  for (const e of d.elements || []) {
+    const t = e.tags || {};
+    const email = String(t.email || t['contact:email'] || '').split(';')[0].trim().toLowerCase();
+    const kind = t.office || t.craft || '';
+    if (!email || BAD_EMAIL.test(email) || CONSUMER_MAIL.test(email)) continue; // a business address, not a personal mailbox
+    // a general "company" office counts only when its name sounds like a web, software or design business
+    if (!['it', 'web_design', 'software', 'advertising'].includes(kind) && !AGENCY_NAME.test(t.name || '')) continue;
+    out.push({ emails: [email], label: `OpenStreetMap ${city}` });
+  }
+  return out;
+}
+
+// Free source 2: GitHub organizations located in the city. Their public email, else their website's contact pages.
+export async function githubAgencies(city, maxProfiles = 10) {
+  const gh = (url) => fetchText(url, { json: true }).then((t) => JSON.parse(t));
+  const found = await gh(`https://api.github.com/search/users?q=${encodeURIComponent(`type:org location:${city} (web OR software OR digital OR agency OR studio)`)}&per_page=${maxProfiles}&sort=joined&order=desc`);
+  const out = [];
+  for (const item of found.items || []) {
+    try {
+      const u = await gh(`https://api.github.com/users/${item.login}`);
+      const label = `GitHub org ${city}`;
+      if (!AGENCY_NAME.test(`${u.name || ''} ${u.login} ${u.bio || ''}`)) continue;
+      const email = String(u.email || '').toLowerCase();
+      if (email && !BAD_EMAIL.test(email)) out.push({ emails: [email], label });
+      else if (u.blog) out.push({ origin: /^https?:/i.test(u.blog) ? u.blog : `https://${u.blog}`, label });
+    } catch {
+      /* one profile failed, go on */
+    }
+    await sleep(500);
+  }
+  return out;
+}
+
 export async function huntAgencies(state) {
   if (process.env.AGENCY_OUTREACH === 'false') return;
   const day = new Date(Date.now() + 5.5 * 3600 * 1000).toISOString().slice(0, 10);
   if (day === agencyDay) return;
   const cap = Number(process.env.AGENCY_PER_DAY) || 10;
-  const queries = [...AGENCY_QUERIES].sort(() => Math.random() - 0.5).slice(0, 5);
-  const sites = new Map();
-  for (const q of queries) {
+  const cities = [...AGENCY_CITIES].sort(() => Math.random() - 0.5);
+  const candidates = [];
+
+  // free sources first (OpenStreetMap, GitHub), then the web search when a search key exists
+  for (const city of cities.slice(0, 2)) {
     try {
-      for (const h of await search(q, false)) {
-        const url = safeUrl(h.url);
-        if (!url) continue;
-        const origin = new URL(url).origin;
-        if (!sites.has(origin)) sites.set(origin, q);
-      }
+      candidates.push(...(await osmAgencies(city)).sort(() => Math.random() - 0.5).slice(0, 12));
     } catch (e) {
-      console.log(`Agency hunt: search "${q}" failed (${e.message})`);
+      console.log(`Agency hunt: OpenStreetMap ${city} failed (${e.message})`);
     }
-    await sleep(1500);
+    await sleep(3000);
   }
-  if (!sites.size) {
-    console.log('Agency hunt: the search found no sites (is BRAVE_API_KEY set and valid?), will try again at the next hunt');
+  for (const city of cities.slice(2, 4)) {
+    try {
+      candidates.push(...(await githubAgencies(city)));
+    } catch (e) {
+      console.log(`Agency hunt: GitHub ${city} failed (${e.message})`);
+    }
+    await sleep(2000);
+  }
+  if (process.env.BRAVE_API_KEY || (process.env.GOOGLE_CSE_KEY && process.env.GOOGLE_CSE_CX)) {
+    for (const q of [...AGENCY_QUERIES].sort(() => Math.random() - 0.5).slice(0, 5)) {
+      try {
+        const seen = new Set();
+        for (const h of await search(q, false)) {
+          const url = safeUrl(h.url);
+          const origin = url && new URL(url).origin;
+          if (origin && !seen.has(origin)) {
+            seen.add(origin);
+            candidates.push({ origin, label: q });
+          }
+        }
+      } catch (e) {
+        console.log(`Agency hunt: search "${q}" failed (${e.message})`);
+      }
+      await sleep(1500);
+    }
+  }
+  if (!candidates.length) {
+    console.log('Agency hunt: no agencies found from OpenStreetMap, GitHub or search, will try again at the next hunt');
     return;
   }
   agencyDay = day;
+  candidates.sort(() => Math.random() - 0.5);
   const pitch = agencyPitch();
   let queued = 0;
-  for (const [origin, q] of sites) {
+  let looked = 0;
+  for (const c of candidates) {
     if (queued >= cap) break;
     try {
-      const emails = await siteEmails(origin);
+      const emails = c.emails || (c.origin ? await siteEmails(c.origin) : []);
+      looked++;
       if (!emails.length) continue;
       state.scanned++;
       state.matched++;
-      const r = enqueueEmails(emails.slice(0, 1), `Agency outreach: ${q}`, origin, '', {}, { subject: pitch.subject, body: pitch.body });
+      const r = enqueueEmails(emails.slice(0, 1), `Agency outreach: ${c.label}`, c.origin || '', '', {}, { subject: pitch.subject, body: pitch.body });
       if (r.error) throw new Error(r.error);
       queued += r.accepted || 0;
       state.queued += r.accepted || 0;
@@ -314,7 +397,7 @@ export async function huntAgencies(state) {
       if (/Sender Gmail/.test(e.message)) throw e;
     }
   }
-  console.log(`Agency hunt: ${sites.size} sites looked at, ${queued} queued`);
+  console.log(`Agency hunt: ${candidates.length} agencies found, ${looked} looked at, ${queued} queued`);
 }
 
 // the text around the first email, enough for the tailor to judge the role
