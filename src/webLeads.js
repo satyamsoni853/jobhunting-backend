@@ -267,13 +267,12 @@ const AGENCY_QUERIES = [
   'web development agency dubai', 'software development company dubai', 'digital agency abu dhabi', 'web design company uae',
   'web development agency toronto', 'software company vancouver', 'digital agency calgary', 'web design agency canada',
   'web development company tokyo', 'software development company japan english', 'digital agency osaka',
-  'web development agency singapore', 'software company sydney', 'web design agency melbourne',
-  'web development agency london', 'software development company berlin', 'digital agency amsterdam',
   'web development agency doha qatar', 'software company riyadh saudi arabia', 'startup studio dubai',
 ];
 let agencyDay = '';
 
-const AGENCY_CITIES = ['Dubai', 'Abu Dhabi', 'Toronto', 'Vancouver', 'Calgary', 'Tokyo', 'Osaka', 'Singapore', 'Sydney', 'Melbourne', 'London', 'Berlin', 'Amsterdam', 'Doha', 'Riyadh'];
+// The owner's focus: UAE, Canada, Japan (plus Qatar and Saudi Arabia). Other countries are left out on purpose.
+const AGENCY_CITIES = ['Dubai', 'Abu Dhabi', 'Sharjah', 'Toronto', 'Vancouver', 'Calgary', 'Montreal', 'Ottawa', 'Tokyo', 'Osaka', 'Yokohama', 'Doha', 'Riyadh'];
 const AGENCY_NAME = /web|software|digital|tech|\bapp|\bit\b|solutions|systems|studio|agency|labs|dev|cloud|data|media|design|creative|interactive|infotech/i;
 const CONSUMER_MAIL = /@(gmail|yahoo|hotmail|outlook|live|icloud|rogers|bell|shaw|telus|aol|proton|protonmail)\./i;
 const OSM_UA = 'jobhunting-bot (personal freelance outreach; github.com/satyamsoni853)';
@@ -297,7 +296,7 @@ out tags 300;`;
         method: 'POST',
         headers: { 'User-Agent': OSM_UA, 'Content-Type': 'application/x-www-form-urlencoded' },
         body: `data=${encodeURIComponent(q)}`,
-        signal: AbortSignal.timeout(45000),
+        signal: AbortSignal.timeout(25000),
       });
       if (!res.ok) throw new Error(`${res.status}`);
       d = await res.json();
@@ -350,7 +349,7 @@ export async function huntAgencies(state) {
   const candidates = [];
 
   // free sources first (OpenStreetMap, GitHub), then the web search when a search key exists
-  for (const city of cities.slice(0, 2)) {
+  for (const city of cities.slice(0, 1)) {
     try {
       candidates.push(...(await osmAgencies(city)).sort(() => Math.random() - 0.5).slice(0, 12));
     } catch (e) {
@@ -358,9 +357,9 @@ export async function huntAgencies(state) {
     }
     await sleep(3000);
   }
-  for (const city of cities.slice(2, 4)) {
+  for (const city of cities.slice(1, 5)) {
     try {
-      candidates.push(...(await githubAgencies(city)));
+      candidates.push(...(await githubAgencies(city, 8)));
     } catch (e) {
       console.log(`Agency hunt: GitHub ${city} failed (${e.message})`);
     }
