@@ -109,7 +109,8 @@ async function search(q, fresh = true) {
       console.log(`Web hunt: ${engine.name} search failed (${e.message})`);
     }
   }
-  if (!process.env.BRAVE_API_KEY && !(process.env.GOOGLE_CSE_KEY && process.env.GOOGLE_CSE_CX)) console.log('Web hunt: no search key set (BRAVE_API_KEY), using DuckDuckGo only');
+  // DuckDuckGo blocks or times out for this server, so it is only tried when ALLOW_DDG=true
+  if (process.env.ALLOW_DDG !== 'true') return [];
   const ddg = await duckDuckGo(q);
   if (!ddg.length) console.log(`Web hunt: DuckDuckGo gave no results for "${q}" (probably blocked)`);
   return ddg;
@@ -120,7 +121,7 @@ const WEEK_MS = 7 * 24 * 3600 * 1000;
 // people offering their own work are competitors, not clients
 const SEEKER = /#getfedihired|#opentowork|open to work|available for (?:hire|work|freelance)|(?:i am|i'm|i’m) (?:a |an )?[\w .+/-]{0,40}(?:developer|engineer|designer)[^.]{0,80}(?:available|for hire|hire me|looking for)|hire me|seeking (?:work|employment|a job)|looking for (?:a )?(?:job|work|new role|opportunit)|my (?:portfolio|resume|cv)\b/i;
 
-const MASTODON = ['mastodon.social', 'fosstodon.org', 'hachyderm.io', 'mastodon.online', 'techhub.social', 'mas.to', 'indieweb.social'];
+const MASTODON = ['mastodon.social', 'fosstodon.org', 'hachyderm.io', 'mastodon.online', 'techhub.social', 'indieweb.social'];
 const MASTODON_TAGS = ['hiring', 'freelance', 'devjobs', 'jobopening', 'remotework', 'webdev', 'jobs', 'freelancer', 'remotejobs', 'contractwork', 'hireadeveloper', 'wordpress'];
 
 async function mastodon() {
@@ -392,8 +393,9 @@ export async function huntAgencies(state) {
   const pitch = agencyPitch();
   let queued = 0;
   let looked = 0;
+  const agencyDeadline = Date.now() + 6 * 60 * 1000;
   for (const c of candidates) {
-    if (queued >= cap) break;
+    if (queued >= cap || Date.now() > agencyDeadline) break;
     try {
       const emails = c.emails || (c.origin ? await siteEmails(c.origin) : []);
       looked++;
@@ -432,7 +434,9 @@ export async function huntWeb(matchers, state) {
   const pages = new Map(); // url -> {snippet, text}
   for (const r of await feeds()) if (!pages.has(r.url)) pages.set(r.url, { text: r.text, label: r.label });
 
-  for (const q of queries) {
+  const hasSearch = Boolean(process.env.BRAVE_API_KEY || (process.env.GOOGLE_CSE_KEY && process.env.GOOGLE_CSE_CX) || process.env.ALLOW_DDG === 'true');
+  if (!hasSearch) console.log('Web hunt: no search key (BRAVE_API_KEY), web search skipped, reading the feeds only');
+  for (const q of hasSearch ? queries : []) {
     try {
       const hits = await search(/@|email/i.test(q) ? q : `${q} email`);
       for (const h of hits) {
@@ -448,7 +452,14 @@ export async function huntWeb(matchers, state) {
   console.log(`Web hunt: ${pages.size} pages and posts to read from ${queries.length} searches and the feeds`);
   let fetched = 0;
   const entries = [...pages.entries()];
+  // a hunt must never run for hours: the page reading stops after WEB_MAX_MINUTES (default 8) and the agency part still runs
+  const deadline = Date.now() + (Number(process.env.WEB_MAX_MINUTES) || 8) * 60 * 1000;
   for (let i = 0; i < entries.length && fetched < MAX_PAGES_PER_RUN; i += 4) {
+    if (Date.now() > deadline) {
+      console.log(`Web hunt: time limit reached after ${i} of ${entries.length} pages, the rest is read at the next hunt`);
+      break;
+    }
+    if (i % 100 === 0 && i) console.log(`Web hunt: ${i} of ${entries.length} pages read`);
     const batch = entries.slice(i, i + 4);
     await Promise.all(
       batch.map(async ([url, info]) => {
