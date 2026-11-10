@@ -9,6 +9,7 @@ import { store } from './store.js';
 import { getSmtp } from './smtp.js';
 import { dbEnabled, getKv, setKv, loadLeads, saveLead } from './db.js';
 import { gmailApiConfigured, gmailApiTransport } from './gmailApi.js';
+import { googleConnectedAt } from './googleAuth.js';
 import { verifyEmail } from './emailCheck.js';
 import { companyFromPost, personFromEmail, greeting, timezoneFromPost, inBusinessHours } from './company.js';
 import { dueForFollowUp, followUpContent, followUpDays, maxFollowUps, followUpsEnabled } from './followup.js';
@@ -263,6 +264,45 @@ function bounceStats() {
   return { contacted: recent.length, bounced, rate, limit, paused: recent.length >= 20 && rate >= limit };
 }
 
+const isAuthError = (m) => /token has been expired|revoked|invalid_grant|google login failed|invalid_client|unauthorized_client|invalid credentials|\b401\b/i.test(String(m || ''));
+
+let authBlockedAt = 0; // set while the Gmail login is broken
+
+// Mails that failed earlier only because of the dead login are put back in the queue (once)
+function requeueAuthFailed() {
+  let n = 0;
+  for (const h of history) {
+    if (h.status !== 'failed' || !isAuthError(h.error)) continue;
+    const email = String(h.email || '').toLowerCase();
+    h.status = 'requeued'; // leaves the failed list
+    if (!email || store.has(email) || queued.has(`first:${email}`) || isBlocked(email) || cancelled.has(email)) continue;
+    const lead = leads.get(email) || {};
+    queue.push({ type: 'first', email, query: lead.query || '', postUrl: lead.postUrl || '', postText: '', company: lead.company || '', queuedAt: Date.now() });
+    queued.add(`first:${email}`);
+    n++;
+  }
+  if (n) {
+    persistQueue();
+    console.log(`🔁 Gmail is back: ${n} earlier failed mail(s) put in the queue again`);
+  }
+  return n;
+}
+
+// Waits (checking every 30 s) until the owner connects Gmail again. Tries once more after 10 minutes anyway.
+async function waitForReconnect() {
+  const since = authBlockedAt;
+  for (let i = 0; i < 20; i++) {
+    if (googleConnectedAt() > since) break;
+    await idle(30 * 1000);
+  }
+  const reconnected = googleConnectedAt() > since;
+  authBlockedAt = 0;
+  if (reconnected) {
+    transporter = null; // build a fresh connection with the new token
+    requeueAuthFailed();
+  }
+}
+
 async function work() {
   if (working) return;
   working = true;
@@ -298,6 +338,17 @@ async function work() {
     try {
       didSend = job.type === 'followup' ? await sendFollowUp(job, c) : await sendFirst(job, c);
     } catch (e) {
+      if (isAuthError(e.message)) {
+        // Gmail login is dead (token expired/revoked). The mail is not lost: it goes back to the front of the queue
+        // and the worker waits until Gmail is connected again, then carries on.
+        queue.unshift(job);
+        queued.add(`${job.type}:${job.email}`);
+        persistQueue();
+        authBlockedAt = authBlockedAt || Date.now();
+        console.error(`🔒 Gmail login failed (${e.message}). Sending paused, ${queue.length} mail(s) wait. Connect Gmail again on the website.`);
+        await waitForReconnect();
+        continue;
+      }
       note({ email: job.email, status: 'failed', error: e.message });
       console.error(`❌ Auto-send failed for ${job.email}:`, e.message);
     }
